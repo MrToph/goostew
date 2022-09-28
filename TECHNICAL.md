@@ -60,11 +60,26 @@ $$
 \frac{m}{M}   (0.25 M t^2 + 0.5 t \sqrt{M G}) + \frac{g}{G}   (0.5 t \sqrt{M G} + G) &\geq 0.25 m t^2 + t \sqrt{m g} + g \\
 \frac{m}{M}   (0.25 M t^2 + 0.5 t \sqrt{M G}) + \frac{g}{G}   0.5 t \sqrt{M G} &\geq 0.25 m t^2 + t \sqrt{m g} \\
 \frac{m}{M} 0.5 t \sqrt{M G} + \frac{g}{G}   0.5 t \sqrt{M G} &\geq t \sqrt{m g} \\
-\frac{(\frac{m}{M} + \frac{g}{G})}{2} \sqrt{M G} &\geq \sqrt{m g}
+\frac{(\frac{m}{M} + \frac{g}{G})}{2} \sqrt{M G} &\geq \sqrt{m g} \\
+\frac{m G + g M}{2MG} \sqrt{M G} &\geq \sqrt{m g} \\
+\frac{m G + g M}{2 \sqrt{M G}} &\geq \sqrt{m g} \\
+m G + g M &\geq 2 \sqrt{M G m g}
 \end{align*}
 $$
 
-This is [true](https://www.wolframalpha.com/input?i=solve+%28m%2FM+%2B+g%2FG%29%2F2+*+sqrt%28M*G%29+%3E%3D+sqrt%28m*g%29%2C+m%3E%3D0%2Cg%3E%3D0%2CM%3E%3Dm%2CG%3E%3Dg%2C+t+%3E+0).
+By letting 
+$x = m G, y = g M$, we can simplify the equation to be
+
+
+$$
+\begin{align*}
+x + y &\geq 2 \sqrt{xy} \\
+x - 2 \sqrt{xy} + y &\geq 0 \\
+(\sqrt{x} - \sqrt{y})^2 &\geq 0
+\end{align*}
+$$
+
+This equation is true for all non-negative numbers $x, y$ because the square of any real number will be non-negative.
 
 <!-- (m/M) _ r\_\textrm{gobbler} + (g/G) _ (r\_\textrm{goo} + G) >= 0.25*m*t^2 + t*sqrt(m*g) + g
 (m/M) * (0.25*M*t^2 + 0.5*t*sqrt(M*G)) + (g/G) * (0.5*t*sqrt(M*G) + G) >= 0.25*m*t^2 + t*sqrt(m*g) + g
