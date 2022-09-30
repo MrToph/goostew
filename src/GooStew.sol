@@ -76,9 +76,7 @@ contract GooStew is ERC1155, ERC1155TokenReceiver, Constants {
             _totalGoo += rewardsGobblers;
             // mintShares is rounded down, new shares price should never decrease because of a rounding error
             _totalSharesGoo += mintShares;
-            _gobblerSharesPerMultipleIndex +=
-                (mintShares * 1e18) /
-                _sumMultiples;
+            _gobblerSharesPerMultipleIndex += (mintShares * 1e18) / _sumMultiples;
         }
 
         _lastUpdate = block.timestamp;
@@ -96,19 +94,11 @@ contract GooStew is ERC1155, ERC1155TokenReceiver, Constants {
         )
     {
         if (gobblerIds.length > 0) {
-            (gobblerStakingId, gobblerSumMultiples) = _depositGobblers(
-                msg.sender,
-                gobblerIds
-            );
+            (gobblerStakingId, gobblerSumMultiples) = _depositGobblers(msg.sender, gobblerIds);
             // when pulling gobblers, the goo in tank stays at `from` and is not given to us
             // and our emissionMultiple is automatically updated, earning the new rate
             _pullGobblers(gobblerIds);
-            emit DepositGobblers(
-                msg.sender,
-                gobblerStakingId,
-                gobblerIds,
-                gobblerSumMultiples
-            );
+            emit DepositGobblers(msg.sender, gobblerStakingId, gobblerIds, gobblerSumMultiples);
         }
 
         if (gooAmount > 0) {
@@ -119,10 +109,7 @@ contract GooStew is ERC1155, ERC1155TokenReceiver, Constants {
         }
     }
 
-    function _depositGoo(address to, uint256 amount)
-        internal
-        returns (uint256 shares)
-    {
+    function _depositGoo(address to, uint256 amount) internal returns (uint256 shares) {
         // TODO: do we need FullMath everywhere because goo amount can easily be >= 1e59? ArtGobblers also does not use FullMath but do they * 1e18 anywhere?
         shares = (amount * 1e18) / _gooSharesPrice();
         if (_totalSharesGoo == 0) {
@@ -144,18 +131,11 @@ contract GooStew is ERC1155, ERC1155TokenReceiver, Constants {
         unchecked {
             for (uint256 i = 0; i < gobblerIds.length; i++) {
                 // no overflow as uint32 is the same type ArtGobblers uses
-                sumMultiples += uint32(
-                    IGobblers(_gobblers).getGobblerEmissionMultiple(
-                        gobblerIds[i]
-                    )
-                );
+                sumMultiples += uint32(IGobblers(_gobblers).getGobblerEmissionMultiple(gobblerIds[i]));
             }
         }
         // this is a not yet seen staking id as it includes gobblerIds[0], which is ensured to be owned by msg.sender and not us
-        stakingId = _encodeStakingId(
-            keccak256(abi.encodePacked(gobblerIds)),
-            sumMultiples
-        );
+        stakingId = _encodeStakingId(keccak256(abi.encodePacked(gobblerIds)), sumMultiples);
 
         gobblerStakingMap[stakingId].lastIndex = _gobblerSharesPerMultipleIndex; // was updated before this call
         _sumMultiples += sumMultiples;
@@ -164,12 +144,7 @@ contract GooStew is ERC1155, ERC1155TokenReceiver, Constants {
         _mint(to, stakingId, 1, "");
     }
 
-    function redeemGooShares(uint256 shares)
-        external
-        noReenter
-        updateInflation
-        returns (uint256 gooAmount)
-    {
+    function redeemGooShares(uint256 shares) external noReenter updateInflation returns (uint256 gooAmount) {
         gooAmount = (shares * _gooSharesPrice()) / 1e18; // rounding down is correct
 
         _burn(msg.sender, GOO_SHARES_ID, shares);
@@ -193,15 +168,12 @@ contract GooStew is ERC1155, ERC1155TokenReceiver, Constants {
         if (balanceOf[msg.sender][stakingId] != 1) revert Unauthorized();
         // check if the provided `gobblerIds` args are indeed the gobblers associated with the stakingId
         // the sumMultiples is also authentic as its directly part of the tokenId and the user owns this tokenId. (i.e., we issued it at some point, thus authentic)
-        uint32 sumMultiples = _decodeStakingIdAndVerify(
-            stakingId,
-            keccak256(abi.encodePacked(gobblerIds))
-        );
+        uint32 sumMultiples = _decodeStakingIdAndVerify(stakingId, keccak256(abi.encodePacked(gobblerIds)));
 
         // (diff of inflation / totalMultiple) * stakingMultiple
         // do an imaginary "lazy mint" to the user. these tokens have already been minted (totalSupply increased) in _updateInflation. no need to call _burn
-        uint256 gooShares = ((_gobblerSharesPerMultipleIndex -
-            gobblerStakingMap[stakingId].lastIndex) * sumMultiples) / 1e18;
+        uint256 gooShares =
+            ((_gobblerSharesPerMultipleIndex - gobblerStakingMap[stakingId].lastIndex) * sumMultiples) / 1e18;
         if (gooShares > 0) {
             gooAmount = (gooShares * _gooSharesPrice()) / 1e18;
             _totalGoo -= gooAmount;
@@ -226,22 +198,17 @@ contract GooStew is ERC1155, ERC1155TokenReceiver, Constants {
     }
 
     /// @dev stakingId is unique as it contains gobblerIds[0] which can only be deposited once, redeeming destroys the stakingId
-    function _encodeStakingId(bytes32 gobblerIdsHash, uint32 sumMultiples)
-        internal
-        pure
-        returns (uint256 id)
-    {
+    function _encodeStakingId(bytes32 gobblerIdsHash, uint32 sumMultiples) internal pure returns (uint256 id) {
         // store part of the hash (224 bits) in the upper bits and sumMultiples in lower 32 bits
         // 224bits of the hash are enough to still be collision-resistant and enforce that gobblerIds match
-        return
-            (uint256(gobblerIdsHash) & ~uint256(type(uint32).max)) |
-            sumMultiples;
+        return (uint256(gobblerIdsHash) & ~uint256(type(uint32).max)) | sumMultiples;
     }
 
-    function _decodeStakingIdAndVerify(
-        uint256 stakingId,
-        bytes32 expectedGobblerIdsHash
-    ) internal pure returns (uint32 sumMultiples) {
+    function _decodeStakingIdAndVerify(uint256 stakingId, bytes32 expectedGobblerIdsHash)
+        internal
+        pure
+        returns (uint32 sumMultiples)
+    {
         // a == b iff a xor b == 0. we use this to check equality of the upper 224 bits (`gobblerIdsHash`).
         if ((stakingId ^ uint256(expectedGobblerIdsHash)) >> 32 != 0) {
             revert MismatchedGobblers();
@@ -253,11 +220,7 @@ contract GooStew is ERC1155, ERC1155TokenReceiver, Constants {
     function _calculateUpdate()
         internal
         view
-        returns (
-            uint256 newTotalGoo,
-            uint256 rewardsGoo,
-            uint256 rewardsGobblers
-        )
+        returns (uint256 newTotalGoo, uint256 rewardsGoo, uint256 rewardsGobblers)
     {
         // other people can compound us by triggering `updateUserGooBalance(gooStew)`, for example, in ArtGobblers._transferFrom
         // however, as g(t) is auto-compounding it doesn't change the final value computed here in `gooBalance()`
@@ -269,9 +232,7 @@ contract GooStew is ERC1155, ERC1155TokenReceiver, Constants {
         newTotalGoo = IGobblers(_gobblers).gooBalance(address(this));
 
         uint256 lastTotalGoo = _totalGoo;
-        uint256 timeElapsedWad = uint256(
-            toDaysWadUnsafe(block.timestamp - _lastUpdate)
-        );
+        uint256 timeElapsedWad = uint256(toDaysWadUnsafe(block.timestamp - _lastUpdate));
         // uint256 recomputedNewTotalGoo = LibGOO.computeGOOBalance(
         //     _sumMultiples,
         //     lastTotalGoo,
@@ -279,11 +240,7 @@ contract GooStew is ERC1155, ERC1155TokenReceiver, Constants {
         // );
 
         // rewardsGoo = t * sqrt(M*GOO) / 2
-        rewardsGoo =
-            timeElapsedWad.mulWadDown(
-                (_sumMultiples * lastTotalGoo * 1e18).sqrt()
-            ) /
-            2;
+        rewardsGoo = timeElapsedWad.mulWadDown((_sumMultiples * lastTotalGoo * 1e18).sqrt()) / 2;
         // rewardsGobblers = t^2 * M + t * sqrt(M*GOO) / 2 = g(t, M, GOO) - GOO - rewardsGoo
         rewardsGobblers = newTotalGoo - lastTotalGoo - rewardsGoo;
     }
@@ -308,11 +265,7 @@ contract GooStew is ERC1155, ERC1155TokenReceiver, Constants {
         unchecked {
             for (uint256 i = 0; i < gobblerIds.length; i++) {
                 // also "stakes" these gobblers to ArtGobblers, we gain their emissionMultiples
-                IERC721(_gobblers).transferFrom(
-                    msg.sender,
-                    address(this),
-                    gobblerIds[i]
-                );
+                IERC721(_gobblers).transferFrom(msg.sender, address(this), gobblerIds[i]);
             }
         }
     }
@@ -323,22 +276,12 @@ contract GooStew is ERC1155, ERC1155TokenReceiver, Constants {
                 // this also accrues inflation for us and
                 // "unstakes" them from ArtGobblers, we lose the emissionMultiples
                 // no `safeTransferFrom` because if you call this function we expect you can handle receiving the NFT (to == msg.sender)
-                IERC721(_gobblers).transferFrom(
-                    address(this),
-                    to,
-                    gobblerIds[i]
-                );
+                IERC721(_gobblers).transferFrom(address(this), to, gobblerIds[i]);
             }
         }
     }
 
-    function uri(uint256 id)
-        public
-        view
-        virtual
-        override
-        returns (string memory)
-    {
+    function uri(uint256 id) public view virtual override returns (string memory) {
         return string.concat(BASE_URI, uint256(id).toString());
     }
 }

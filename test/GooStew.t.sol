@@ -32,10 +32,7 @@ contract BasicTest is ArtGobblersTest, ERC1155TokenReceiver {
         for (uint256 i = 0; i < multiples.length; i++) {
             gobblerIds[i] = gobblers.mintGobblerExposed(uint32(multiples[i]));
             assertEq(gobblers.ownerOf(gobblerIds[i]), address(this));
-            assertEq(
-                gobblers.getGobblerEmissionMultiple(gobblerIds[i]),
-                multiples[i]
-            );
+            assertEq(gobblers.getGobblerEmissionMultiple(gobblerIds[i]), multiples[i]);
         }
     }
 }
@@ -55,20 +52,16 @@ contract GooStewTest is BasicTest, Constants {
         uint16[3] memory gobblerMultiples,
         uint72[3] memory gooDeposits,
         uint24[2] memory delays // in seconds, max range ~200 days
-    ) public {
+    )
+        public
+    {
         // assumes & bounds
         vm.assume(delays[0] > 0 && delays[1] > 0);
         vm.assume(gooDeposits[0] != 0);
         // lower-bound user goo deposits to not fuzz test with tiny values that lead to rounding errors.
         for (uint256 i = 0; i < gooDeposits.length; i++) {
             if (gooDeposits[i] > 0) {
-                gooDeposits[i] = uint72(
-                    bound(
-                        gooDeposits[0],
-                        MIN_GOO_SHARES_INITIAL_MINT,
-                        type(uint72).max
-                    )
-                );
+                gooDeposits[i] = uint72(bound(gooDeposits[0], MIN_GOO_SHARES_INITIAL_MINT, type(uint72).max));
             }
         }
 
@@ -77,9 +70,7 @@ contract GooStewTest is BasicTest, Constants {
         uint256[] memory allGobblerIds = new uint256[](gobblerMultiples.length);
         for (uint256 i = 0; i < gobblerMultiples.length; i++) {
             if (gobblerMultiples[i] > 0) {
-                allGobblerIds[i] = gobblers.mintGobblerExposed(
-                    gobblerMultiples[i]
-                );
+                allGobblerIds[i] = gobblers.mintGobblerExposed(gobblerMultiples[i]);
             }
         }
         uint256[] memory gobblerIds = new uint256[](1);
@@ -94,10 +85,8 @@ contract GooStewTest is BasicTest, Constants {
         console2.log("===== User 0 =====");
         gobblerIds[0] = allGobblerIds[0];
         {
-            (uint256 stakingId, , uint256 gooShares) = stew.deposit(
-                gobblerIds[0] > 0 ? gobblerIds : new uint256[](0),
-                gooDeposits[0]
-            );
+            (uint256 stakingId,, uint256 gooShares) =
+                stew.deposit(gobblerIds[0] > 0 ? gobblerIds : new uint256[](0), gooDeposits[0]);
             stakingIds[0] = stakingId;
             gooShareAmounts[0] = gooShares;
         }
@@ -106,10 +95,8 @@ contract GooStewTest is BasicTest, Constants {
         console2.log("===== User 1 =====");
         gobblerIds[0] = allGobblerIds[1];
         {
-            (uint256 stakingId, , uint256 gooShares) = stew.deposit(
-                gobblerIds[0] > 0 ? gobblerIds : new uint256[](0),
-                gooDeposits[1]
-            );
+            (uint256 stakingId,, uint256 gooShares) =
+                stew.deposit(gobblerIds[0] > 0 ? gobblerIds : new uint256[](0), gooDeposits[1]);
             stakingIds[1] = stakingId;
             gooShareAmounts[1] = gooShares;
         }
@@ -120,43 +107,23 @@ contract GooStewTest is BasicTest, Constants {
         console2.log("===== User 2 =====");
         gobblerIds[0] = allGobblerIds[2];
         {
-            (uint256 stakingId, , uint256 gooShares) = stew.deposit(
-                gobblerIds[0] > 0 ? gobblerIds : new uint256[](0),
-                gooDeposits[2]
-            );
+            (uint256 stakingId,, uint256 gooShares) =
+                stew.deposit(gobblerIds[0] > 0 ? gobblerIds : new uint256[](0), gooDeposits[2]);
             stakingIds[2] = stakingId;
             gooShareAmounts[2] = gooShares;
         }
         skip(delays[1]);
 
         redeemAndAssertNoLoss(
-            1,
-            allGobblerIds[1],
-            gooShareAmounts[1],
-            stakingIds[1],
-            gobblerMultiples[1],
-            gooDeposits[1],
-            totalDelay
+            1, allGobblerIds[1], gooShareAmounts[1], stakingIds[1], gobblerMultiples[1], gooDeposits[1], totalDelay
         );
 
         redeemAndAssertNoLoss(
-            0,
-            allGobblerIds[0],
-            gooShareAmounts[0],
-            stakingIds[0],
-            gobblerMultiples[0],
-            gooDeposits[0],
-            totalDelay
+            0, allGobblerIds[0], gooShareAmounts[0], stakingIds[0], gobblerMultiples[0], gooDeposits[0], totalDelay
         );
 
         redeemAndAssertNoLoss(
-            2,
-            allGobblerIds[2],
-            gooShareAmounts[2],
-            stakingIds[2],
-            gobblerMultiples[2],
-            gooDeposits[2],
-            delays[1]
+            2, allGobblerIds[2], gooShareAmounts[2], stakingIds[2], gobblerMultiples[2], gooDeposits[2], delays[1]
         );
     }
 
@@ -168,7 +135,9 @@ contract GooStewTest is BasicTest, Constants {
         uint256 gobblerMultiple,
         uint256 gooDepositAmount,
         uint256 delay
-    ) internal {
+    )
+        internal
+    {
         // user redeems, should have received at least as much as they would have received on their own
         console2.log("===== Redeem User %s =====", userId);
         uint256[] memory gobblerIds = new uint256[](1);
