@@ -25,16 +25,16 @@ contract MockArtGobblers is ArtGobblers {
     {}
 
     /// acts like calling `claimGobbler` + `revealGobblers(1)` + sets custom emission multiple
-    function mintGobblerExposed(uint32 emissionMultiple) external returns (uint256 gobblerId) {
+    function mintGobblerExposed(address to, uint32 emissionMultiple) external returns (uint256 gobblerId) {
         gobblerId = ++currentNonLegendaryId;
-        _mint(msg.sender, gobblerId);
+        _mint(to, gobblerId);
         gobblerRevealsData.waitingForSeed = false;
         gobblerRevealsData.toBeRevealed = uint56(1);
         gobblerRevealsData.lastRevealedId = uint56(gobblerId - 1);
         this.revealGobblers(1);
 
-        getUserData[msg.sender].emissionMultiple -= uint32(getGobblerData[gobblerId].emissionMultiple);
+        getUserData[to].emissionMultiple -= uint32(getGobblerData[gobblerId].emissionMultiple);
         getGobblerData[gobblerId].emissionMultiple = emissionMultiple;
-        getUserData[msg.sender].emissionMultiple += uint32(getGobblerData[gobblerId].emissionMultiple);
+        getUserData[to].emissionMultiple += uint32(getGobblerData[gobblerId].emissionMultiple);
     }
 }
