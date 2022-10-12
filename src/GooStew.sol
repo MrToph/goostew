@@ -62,7 +62,7 @@ contract GooStew is ERC20, Constants {
         if (_lastUpdate == block.timestamp) return;
 
         (, uint256 rewardsGoo, uint256 rewardsGobblers) = _calculateUpdate();
-        _lastUpdate = block.timestamp; // update can now be set as following functions don't use it anymore
+        _lastUpdate = block.timestamp; // update can now be set as subsequent calls don't use it anymore
 
         // 1. update goo rewards: this updates _sharesPrice
         _totalGoo += rewardsGoo;
@@ -78,7 +78,6 @@ contract GooStew is ERC20, Constants {
             _mint(LAZY_MINT_ADDRESS, mintShares);
             _gobblerSharesPerMultipleIndex += (mintShares * 1e18) / _sumMultiples;
         }
-
     }
 
     function _calculateUpdate()
@@ -151,7 +150,7 @@ contract GooStew is ERC20, Constants {
             + _computeUnmintedShares(_gobblerSharesPerMultipleIndex, gobblerDeposits[account].lastIndex, userSumMultiples);
     }
 
-    function _beforeTokenTransfer(address from, address /* to */, uint256 /* amount */) internal virtual override {
+    function _beforeTokenTransfer(address from, address, /* to */ uint256 /* amount */ ) internal virtual override {
         // as `balanceOf` reflects an optimistic balance, we need to update `from` here s.t. users can transfer entire balance.
         // `to` does not need to be updated because correctness of user's inflation update logic is based only on gobbler emissionMultiple, not on balance
         _updateInflation();
@@ -209,7 +208,10 @@ contract GooStew is ERC20, Constants {
     }
 
     /// redeems all gobblers of the caller
-    function redeemGobblers(uint256[] calldata removalIndexesDescending, uint256[] calldata expectedGobblerIds) external updateInflation {
+    function redeemGobblers(uint256[] calldata removalIndexesDescending, uint256[] calldata expectedGobblerIds)
+        external
+        updateInflation
+    {
         _updateUser(msg.sender);
 
         uint32 sumMultiples = 0;
@@ -240,7 +242,6 @@ contract GooStew is ERC20, Constants {
 
         _pushGoo(msg.sender, gooAmount);
     }
-
 
     /// @dev goo shares price denominated in goo: totalGoo * 1e18 / totalShares
     function _sharesPrice() internal view returns (uint256) {
@@ -289,14 +290,22 @@ contract GooStew is ERC20, Constants {
     /*//////////////////////////////////////////////////////////////
                         UTILITY VIEW FUNCTIONS
     //////////////////////////////////////////////////////////////*/
-    function getUserInfo(address user) external view returns (uint256[] memory gobblerIds, uint256 shares, uint32 sumMultiples, uint256 lastIndex) {
+    function getUserInfo(address user)
+        external
+        view
+        returns (uint256[] memory gobblerIds, uint256 shares, uint32 sumMultiples, uint256 lastIndex)
+    {
         shares = balanceOf(user);
         gobblerIds = gobblerDeposits[user].packedIds.getValues();
         sumMultiples = gobblerDeposits[user].sumMultiples;
         lastIndex = gobblerDeposits[user].lastIndex;
     }
 
-    function getGlobalInfo() external view returns (uint256 sharesTotalSupply, uint32 sumMultiples, uint64 lastUpdate, uint256 lastIndex, uint256 price) {
+    function getGlobalInfo()
+        external
+        view
+        returns (uint256 sharesTotalSupply, uint32 sumMultiples, uint64 lastUpdate, uint256 lastIndex, uint256 price)
+    {
         sharesTotalSupply = totalSupply;
         sumMultiples = _sumMultiples;
         lastUpdate = uint64(_lastUpdate);

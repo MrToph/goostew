@@ -15,10 +15,7 @@ contract PackedArray {
         _arr.add(values);
     }
 
-    function remove(
-        uint256[] calldata removalIndexesDesc,
-        uint256[] calldata expectedRemovedValues
-    ) external {
+    function remove(uint256[] calldata removalIndexesDesc, uint256[] calldata expectedRemovedValues) external {
         _arr.remove(removalIndexesDesc, expectedRemovedValues);
     }
 
@@ -36,27 +33,15 @@ contract SimpleArray {
         }
     }
 
-    function remove(
-        uint256[] calldata removalIndexesDesc,
-        uint256[] calldata expectedRemovedValues
-    ) external {
-        require(
-            removalIndexesDesc.length == expectedRemovedValues.length,
-            "!length"
-        );
+    function remove(uint256[] calldata removalIndexesDesc, uint256[] calldata expectedRemovedValues) external {
+        require(removalIndexesDesc.length == expectedRemovedValues.length, "!length");
         for (uint256 i = 1; i < removalIndexesDesc.length; ++i) {
-            require(
-                removalIndexesDesc[i] < removalIndexesDesc[i - 1],
-                "!sorted"
-            );
+            require(removalIndexesDesc[i] < removalIndexesDesc[i - 1], "!sorted");
         }
 
         for (uint256 i = 0; i < removalIndexesDesc.length; ++i) {
             // we always remove from the back so we don't need to adjust the index
-            require(
-                _arr[removalIndexesDesc[i]] == expectedRemovedValues[i],
-                "!valueEqual"
-            );
+            require(_arr[removalIndexesDesc[i]] == expectedRemovedValues[i], "!valueEqual");
             _arr[removalIndexesDesc[i]] = _arr[_arr.length - 1];
             _arr.pop();
         }
@@ -73,11 +58,7 @@ contract RandomDrawTest is Test {
     uint256 private valuesDrawSeed;
     uint256 private indexesDrawSeed;
 
-    function resetValues(
-        uint256 minInclusive,
-        uint256 maxInclusive,
-        uint256 seed
-    ) internal {
+    function resetValues(uint256 minInclusive, uint256 maxInclusive, uint256 seed) internal {
         delete values;
         for (uint256 i = minInclusive; i <= maxInclusive; ++i) {
             values.push(i);
@@ -88,9 +69,7 @@ contract RandomDrawTest is Test {
     function drawUniqueValue() internal returns (uint256 value) {
         assert(values.length > 0);
 
-        uint256 valuesIndex = uint256(
-            keccak256(abi.encodePacked(valuesDrawSeed, uint256(0)))
-        ) % values.length;
+        uint256 valuesIndex = uint256(keccak256(abi.encodePacked(valuesDrawSeed, uint256(0)))) % values.length;
         value = values[valuesIndex];
         values[valuesIndex] = values[values.length - 1];
         values.pop();
@@ -98,11 +77,7 @@ contract RandomDrawTest is Test {
         valuesDrawSeed = uint256(keccak256(abi.encodePacked(valuesDrawSeed)));
     }
 
-    function resetIndexes(
-        uint256 minInclusive,
-        uint256 maxInclusive,
-        uint256 seed
-    ) internal {
+    function resetIndexes(uint256 minInclusive, uint256 maxInclusive, uint256 seed) internal {
         delete indexes;
         for (uint256 i = minInclusive; i <= maxInclusive; ++i) {
             indexes.push(i);
@@ -113,9 +88,7 @@ contract RandomDrawTest is Test {
     function drawUniqueIndex() internal returns (uint256 value) {
         assert(indexes.length > 0);
 
-        uint256 indexesIndex = uint256(
-            keccak256(abi.encodePacked(indexesDrawSeed, uint256(1)))
-        ) % indexes.length;
+        uint256 indexesIndex = uint256(keccak256(abi.encodePacked(indexesDrawSeed, uint256(1)))) % indexes.length;
         value = indexes[indexesIndex];
         indexes[indexesIndex] = indexes[indexes.length - 1];
         indexes.pop();
@@ -129,11 +102,7 @@ contract RandomDrawTest is Test {
         }
     }
 
-    function quickSort(
-        uint256[] memory arr,
-        uint256 left,
-        uint256 right
-    ) public pure {
+    function quickSort(uint256[] memory arr, uint256 left, uint256 right) public pure {
         if (left >= right) {
             return;
         }
@@ -182,11 +151,7 @@ contract PackedArrayDifferentialFuzzTest is RandomDrawTest {
         uint256[] memory expected = s.getValues();
 
         assertEq(received.length, expected.length, "length mismatch");
-        assertEq(
-            keccak256(abi.encodePacked(received)),
-            keccak256(abi.encodePacked(expected)),
-            "value mismatch"
-        );
+        assertEq(keccak256(abi.encodePacked(received)), keccak256(abi.encodePacked(expected)), "value mismatch");
     }
 
     function testAddValuesMultiple(uint256 seed, uint16 _length) public {
@@ -204,18 +169,10 @@ contract PackedArrayDifferentialFuzzTest is RandomDrawTest {
         uint256[] memory expected = s.getValues();
 
         assertEq(received.length, expected.length, "length mismatch");
-        assertEq(
-            keccak256(abi.encodePacked(received)),
-            keccak256(abi.encodePacked(expected)),
-            "value mismatch"
-        );
+        assertEq(keccak256(abi.encodePacked(received)), keccak256(abi.encodePacked(expected)), "value mismatch");
     }
 
-    function testRemoveValuesSingle(
-        uint256 seed,
-        uint16 _length,
-        uint16 _removeLength
-    ) public {
+    function testRemoveValuesSingle(uint256 seed, uint16 _length, uint16 _removeLength) public {
         uint256 length = bound(_length, 1, 1_000); // at least length of 1
         uint256 removeLength = bound(_removeLength, 0, length);
         resetValues(1, 10_000, seed);
@@ -245,18 +202,10 @@ contract PackedArrayDifferentialFuzzTest is RandomDrawTest {
         uint256[] memory expected = s.getValues();
 
         assertEq(received.length, expected.length, "length mismatch");
-        assertEq(
-            keccak256(abi.encodePacked(received)),
-            keccak256(abi.encodePacked(expected)),
-            "value mismatch"
-        );
+        assertEq(keccak256(abi.encodePacked(received)), keccak256(abi.encodePacked(expected)), "value mismatch");
     }
 
-    function testRemoveValuesMultiple(
-        uint256 seed,
-        uint16 _length,
-        uint16 _removeLength
-    ) public {
+    function testRemoveValuesMultiple(uint256 seed, uint16 _length, uint16 _removeLength) public {
         uint256 length = bound(_length, 1, 1_000); // at least length of 1
         uint256 removeLength = bound(_removeLength, 0, length);
         resetValues(1, 10_000, seed);
@@ -293,18 +242,12 @@ contract PackedArrayDifferentialFuzzTest is RandomDrawTest {
         uint256[] memory expected = s.getValues();
 
         assertEq(received.length, expected.length, "length mismatch");
-        assertEq(
-            keccak256(abi.encodePacked(received)),
-            keccak256(abi.encodePacked(expected)),
-            "value mismatch"
-        );
+        assertEq(keccak256(abi.encodePacked(received)), keccak256(abi.encodePacked(expected)), "value mismatch");
     }
 
-    function testAddRemoveMixed(
-        uint256[3] memory seeds,
-        uint16[3] memory _lengths,
-        uint16[3] memory _removeLengths
-    ) public {
+    function testAddRemoveMixed(uint256[3] memory seeds, uint16[3] memory _lengths, uint16[3] memory _removeLengths)
+        public
+    {
         resetValues(1, 10_000, seeds[0]);
         for (uint256 iterations = 0; iterations < 3; ++iterations) {
             uint256 length = bound(_lengths[iterations], 1, 1_000); // at least length of 1
@@ -323,11 +266,7 @@ contract PackedArrayDifferentialFuzzTest is RandomDrawTest {
             uint256[] memory received = p.getValues();
             {
                 assertEq(received.length, expected.length, "length mismatch");
-                assertEq(
-                    keccak256(abi.encodePacked(received)),
-                    keccak256(abi.encodePacked(expected)),
-                    "value mismatch"
-                );
+                assertEq(keccak256(abi.encodePacked(received)), keccak256(abi.encodePacked(expected)), "value mismatch");
             }
 
             // 2. removals
@@ -353,11 +292,7 @@ contract PackedArrayDifferentialFuzzTest is RandomDrawTest {
                 received = p.getValues();
                 expected = s.getValues();
                 assertEq(received.length, expected.length, "length mismatch");
-                assertEq(
-                    keccak256(abi.encodePacked(received)),
-                    keccak256(abi.encodePacked(expected)),
-                    "value mismatch"
-                );
+                assertEq(keccak256(abi.encodePacked(received)), keccak256(abi.encodePacked(expected)), "value mismatch");
             }
         }
     }

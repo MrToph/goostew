@@ -9,7 +9,6 @@ abstract contract Constants {
 
     error Unauthorized();
     error InvalidArguments();
-    error MismatchedGobbler(uint256 gobblerId);
     error Reentered();
 
     event DepositGobblers(address indexed owner, uint256[] gobblerIds, uint32 sumMultiples);

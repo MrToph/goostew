@@ -10,6 +10,7 @@ library LibPackedArray {
     error ArrayLengthMismatch();
     error ArrayNotSorted();
     error ValueNotFound(uint256 value);
+    error ExpectedNonZeroId();
 
     uint256 constant MAX_VALUE_BITS = 14; // log_2(10_000) = 13.82 bits < 14 bits;
     uint256 constant VALUE_MASK = (2 ** MAX_VALUE_BITS) - 1; // MAX_VALUE_BITS-bit mask of 1's
@@ -81,7 +82,6 @@ library LibPackedArray {
         uint256 runningLastSlotIndex = arrLength - 1; // decreased by 1 whenever we remove the entire last slot
         arrCopy[runningLastSlotIndex] = arr[runningLastSlotIndex];
         uint256 currentNumValuesLastSlot = _countValues(arrCopy[runningLastSlotIndex]); // >= 1 as slot exists
-        console2.log("currentNumValuesLastSlot", currentNumValuesLastSlot);
 
         // 2. cache only the slots that we're going to touch for removalIndexes (& last slot)
         for (uint256 i = 0; i < removalIndexesDesc.length; ++i) {
@@ -95,30 +95,25 @@ library LibPackedArray {
         // 3. now iterate over removals and remove value by swapping it with last value + "pop" last value
         // we need to keep reading and writing to arrCopy each iteration as runningLastSlotIndex might be the same as slotIndex, which would then work on outdated data
         for (uint256 i = 0; i < removalIndexesDesc.length; ++i) {
-            console2.log("=== iteration %s ===", i);
             // a) read last value
             uint256 lastSlot = arrCopy[runningLastSlotIndex];
             uint256 lastValue = _getValueAtIndex(lastSlot, currentNumValuesLastSlot - 1);
-            console2.log("lastValue", lastValue);
 
             // b) set new value
             uint256 slotIndex = removalIndexesDesc[i] / MAX_VALUES_PER_SLOT;
             uint256 valueIndex = removalIndexesDesc[i] % MAX_VALUES_PER_SLOT;
             uint256 slot = arrCopy[slotIndex];
             uint256 value = _getValueAtIndex(slot, valueIndex);
+            // check that we're not expecting the uninitialized value => we only remove values that have been set
+            if (expectedRemovedValues[i] == 0) revert ExpectedNonZeroId();
             if (value != expectedRemovedValues[i]) revert ValueNotFound(expectedRemovedValues[i]);
-            console2.logBytes32(bytes32(slot));
             slot = _setValueAtIndex(slot, valueIndex, lastValue);
-            console2.logBytes32(bytes32(slot));
             // write it back to cache
             arrCopy[slotIndex] = slot;
 
             // c) set last value to zero. (this order works if index to remove is same index as runningLastSlotIndex)
             lastSlot = arrCopy[runningLastSlotIndex];
-            console2.log("lastSlot");
-            console2.logBytes32(bytes32(lastSlot));
             lastSlot = _setValueAtIndex(lastSlot, currentNumValuesLastSlot - 1, 0);
-            console2.logBytes32(bytes32(lastSlot));
             // write it back
             arrCopy[runningLastSlotIndex] = lastSlot;
 
@@ -144,7 +139,6 @@ library LibPackedArray {
         // 4. write back all touched slots to storage
         // handle special case that all items were removed (runningLastSlotIndex == 0 && currentNumValuesLastSlot == 0) above where we couldn't decrement runningLastSlotIndex
         if (runningLastSlotIndex == 0 && currentNumValuesLastSlot == 0) {
-            console2.log("popping all special case");
             for (uint256 i = 0; i < arrLength; i++) {
                 arr.pop();
             }
@@ -153,7 +147,6 @@ library LibPackedArray {
 
         // runningLastSlotIndex is now accurate and points to a non-empty slot. pop all greater ones
         for (uint256 i = arrLength - 1; i > runningLastSlotIndex; i--) {
-            console2.log("popping");
             arr.pop();
         }
         // write runningLastSlotIndex
