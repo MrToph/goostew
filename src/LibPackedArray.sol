@@ -1,9 +1,9 @@
-// https://github.com/transmissions11/goo-issuance/blob/648e65e66e43ff5c19681427e300ece9c0df1437/src/LibGOO.sol#L1
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.0;
 
-/// @dev tighly packs values in range [1, 10_000] (max gobbler ID) into an array
-/// slots are filled with values from lsb to msb
+/// @title LibPackedArray
+/// @author cmichel
+/// @dev tighly packs values in range [1, 10_000] into an array. slots are filled with values from lsb to msb
 library LibPackedArray {
     error ArrayLengthMismatch();
     error ArrayNotSorted();
@@ -14,7 +14,7 @@ library LibPackedArray {
     uint256 constant VALUE_MASK = (2 ** MAX_VALUE_BITS) - 1; // MAX_VALUE_BITS-bit mask of 1's
     uint256 constant MAX_VALUES_PER_SLOT = 256 / MAX_VALUE_BITS; // 256 slot bits / 14 MAX_VALUE_BITS = 18.25 ~ 18
 
-    /// @dev does NOT check if items already exist in the array
+    /// @dev does NOT check if items already exist in the array. caller needs to ensure no duplicates can happen
     function add(uint256[] storage arr, uint256[] calldata values) internal {
         uint256 valuesLength = values.length;
         uint256 arrLength = arr.length;
@@ -49,6 +49,8 @@ library LibPackedArray {
         }
     }
 
+    /// @dev verifies that value at `removalIndexesDesc[i]` equals `expectedRemovedValues[i]` (and `expectedRemovedValues[i] != 0`).
+    /// this ensures that all values in `expectedRemovedValues` have indeed been found and removed
     function remove(
         uint256[] storage arr,
         uint256[] calldata removalIndexesDesc,
@@ -161,6 +163,7 @@ library LibPackedArray {
         }
     }
 
+    /// @dev unpacks the packed array into a normal array of values
     function getValues(uint256[] storage arr) internal view returns (uint256[] memory values) {
         // count how many values are in the last slot
         uint256 arrLength = arr.length;
