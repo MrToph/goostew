@@ -23,7 +23,6 @@ contract GooStew is ERC20, Constants {
     string internal constant BASE_URI = "https://nft.goostew.com/";
     address internal immutable _gobblers;
     address internal immutable _goo;
-    uint256 internal _ENTERED = 1;
     uint256 internal _lastUpdate; // last time _updateInflation (deposit/redeem) was called
 
     // Goo related
@@ -46,13 +45,6 @@ contract GooStew is ERC20, Constants {
         _goo = goo;
         IERC20(goo).approve(gobblers, type(uint256).max);
         // ArtGobblers always has approval to take gobblers, no need to set
-    }
-
-    modifier noReenter() {
-        if (_ENTERED != 1) revert Reentered();
-        _ENTERED = 2;
-        _;
-        _ENTERED = 1;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -171,7 +163,6 @@ contract GooStew is ERC20, Constants {
     //////////////////////////////////////////////////////////////*/
     function depositGobblers(uint256[] calldata gobblerIds)
         external
-        noReenter
         updateInflation
         returns (
             // sum of gobblerIds emissionMultiples. acts as "gobblerShares", proportional to total _sumMultiples
@@ -199,7 +190,7 @@ contract GooStew is ERC20, Constants {
         emit DepositGobblers(msg.sender, gobblerIds, sumMultiples);
     }
 
-    function depositGoo(uint256 amount) external noReenter updateInflation returns (uint256 shares) {
+    function depositGoo(uint256 amount) external updateInflation returns (uint256 shares) {
         _updateUser(msg.sender);
 
         // TODO: do we need FullMath everywhere because goo amount can easily be >= 1e59? ArtGobblers also does not use FullMath but do they * 1e18 anywhere?
@@ -218,7 +209,7 @@ contract GooStew is ERC20, Constants {
     }
 
     /// redeems all gobblers of the caller
-    function redeemGobblers(uint256[] calldata removalIndexesDescending, uint256[] calldata expectedGobblerIds) external noReenter updateInflation {
+    function redeemGobblers(uint256[] calldata removalIndexesDescending, uint256[] calldata expectedGobblerIds) external updateInflation {
         _updateUser(msg.sender);
 
         uint32 sumMultiples = 0;
@@ -238,7 +229,7 @@ contract GooStew is ERC20, Constants {
         _pushGobblers(msg.sender, expectedGobblerIds);
     }
 
-    function redeemGooShares(uint256 shares) external noReenter updateInflation returns (uint256 gooAmount) {
+    function redeemGooShares(uint256 shares) external updateInflation returns (uint256 gooAmount) {
         _updateUser(msg.sender);
         // can directly read from _balanceOf instead of balanceOf as it has been accrued in `_updateUser`
         if (shares == type(uint256).max) shares = _balanceOf[msg.sender];
