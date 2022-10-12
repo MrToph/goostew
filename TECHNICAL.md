@@ -6,7 +6,7 @@ First, we state definitions from the [official Goo Paper](https://www.paradigm.x
 
 1. goo balance $g(t, m, \textrm{goo}) = 0.25 t^2 m + t \sqrt{m \cdot \textrm{goo}} + \textrm{goo}$
 1. instantaneous goo production: $g'(m, \textrm{goo} = g(t)) = \sqrt{m \cdot \textrm{goo}}$
-1. goo production $\Delta g(t, m, \textrm{goo}) = g(t, m, \textrm{goo}) 1. \textrm{goo} = t^2 m + t \sqrt{m \cdot \textrm{goo}}$
+1. goo production $\Delta g(t, m, \textrm{goo}) = g(t, m, \textrm{goo}) - \textrm{goo} = 0.25 t^2 m + t \sqrt{m \cdot \textrm{goo}}$
 1. goo auto-compounds: $g(t_0 + t_1, m, \textrm{goo}) = g(t_1, m, g(t_0, m, \textrm{goo}))$
 1. optimally distributed goo among several gobblers is equal to the total goo distributed to a single gobbler with the sum of their multiples: $g(t, M, \textrm{GOO}) = \sum_i g(t, m_i, \frac{m_i}{M} * \textrm{GOO})$ with $M = \sum_i m_i$, $\textrm{GOO} = \sum_i \textrm{goo}_i$
 
