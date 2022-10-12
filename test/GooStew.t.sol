@@ -151,7 +151,9 @@ contract GooStewTest is BasicTest, Constants {
             console2.log("redeeming gobblers ...");
             uint256[] memory gobblerIds = new uint256[](1);
             gobblerIds[0] = gobblerId;
-            stew.redeemGobblers(gobblerIds);
+            uint256[] memory removalIndexes = new uint256[](1);
+            removalIndexes[0] = 0; // only have a single gobbler
+            stew.redeemGobblers(removalIndexes, gobblerIds);
         }
         console2.log("redeeming goo ...");
         uint256 gooAmount = stew.redeemGooShares(type(uint256).max);

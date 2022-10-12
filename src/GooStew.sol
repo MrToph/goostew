@@ -10,11 +10,13 @@ import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {Constants} from "./Constants.sol";
 import {LibGOO} from "./LibGOO.sol";
+import {LibPackedArray} from "./LibPackedArray.sol";
 import {IGobblers} from "./IGobblers.sol";
 import {ERC20} from "./ERC20.sol";
 
 contract GooStew is ERC20, Constants {
     using LibString for uint256;
+    using LibPackedArray for uint256[];
     using FixedPointMathLib for uint256;
 
     // accounting related
@@ -31,7 +33,7 @@ contract GooStew is ERC20, Constants {
     // Gobbler related
     struct GobblerDepositInfo {
         uint256 lastIndex;
-        uint256[] ids;
+        uint256[] packedIds;
         uint32 sumMultiples;
     }
 
@@ -70,15 +72,15 @@ contract GooStew is ERC20, Constants {
         (, uint256 rewardsGoo, uint256 rewardsGobblers) = _calculateUpdate();
         _lastUpdate = block.timestamp; // update can now be set as following functions don't use it anymore
 
-        // 1. update goo rewards: this updates _gooSharesPrice
+        // 1. update goo rewards: this updates _sharesPrice
         _totalGoo += rewardsGoo;
 
         // 2. update gobbler rewards
         // if there were no deposited gobblers, rewards should be zero anyway, can skip
         if (_sumMultiples > 0) {
             // act as if we deposited rewardsGobblers for goo shares and distributed among current gobbler stakers
-            // i.e., mint new goo shares with rewardsGobblers, keeping the _gooSharesPrice the same
-            uint256 mintShares = (rewardsGobblers * 1e18) / _gooSharesPrice();
+            // i.e., mint new goo shares with rewardsGobblers, keeping the _sharesPrice the same
+            uint256 mintShares = (rewardsGobblers * 1e18) / _sharesPrice();
             _totalGoo += rewardsGobblers;
             // mintShares is rounded down, new shares price should never decrease because of a rounding error
             _mint(LAZY_MINT_ADDRESS, mintShares);
@@ -146,7 +148,7 @@ contract GooStew is ERC20, Constants {
     }
 
     /// @notice Returns the user's accrued ibGoo balance up to the last time the contract's inflation update was triggered
-    function balanceOf(address account) external view virtual override returns (uint256) {
+    function balanceOf(address account) public view virtual override returns (uint256) {
         // gobbler depositors earn ibGoo on every update inflation, account for that
         uint256 userSumMultiples = gobblerDeposits[account].sumMultiples;
         // short-circuit as most ibGoo holders didn't deposit a gobbler and are therefore not lazy-minted any additional shares
@@ -177,83 +179,70 @@ contract GooStew is ERC20, Constants {
         )
     {
         _updateUser(msg.sender);
+
         if (gobblerIds.length == 0) revert InvalidArguments();
-        (sumMultiples) = _depositGobblers(msg.sender, gobblerIds);
+
+        unchecked {
+            for (uint256 i = 0; i < gobblerIds.length; i++) {
+                // no overflow as uint32 is the same type ArtGobblers uses
+                sumMultiples += uint32(IGobblers(_gobblers).getGobblerEmissionMultiple(gobblerIds[i]));
+            }
+        }
+
+        // gobblerIds does not contain duplicates as `_pullGobblers` would fail. `add` is safe
+        gobblerDeposits[msg.sender].packedIds.add(gobblerIds);
+        gobblerDeposits[msg.sender].sumMultiples += sumMultiples;
+        _sumMultiples += sumMultiples;
         // when pulling gobblers, the goo in tank stays at `from` and is not given to us
         // and our emissionMultiple is automatically updated, earning the new rate
         _pullGobblers(gobblerIds);
         emit DepositGobblers(msg.sender, gobblerIds, sumMultiples);
     }
 
-    function _depositGobblers(address to, uint256[] calldata gobblerIds) internal returns (uint32 sumMultiples) {
-        unchecked {
-            for (uint256 i = 0; i < gobblerIds.length; i++) {
-                // no overflow as uint32 is the same type ArtGobblers uses
-                sumMultiples += uint32(IGobblers(_gobblers).getGobblerEmissionMultiple(gobblerIds[i]));
-                gobblerDeposits[to].ids.push(gobblerIds[i]);
-            }
-        }
-
-        gobblerDeposits[to].sumMultiples += sumMultiples;
-        _sumMultiples += sumMultiples;
-    }
-
     function depositGoo(uint256 amount) external noReenter updateInflation returns (uint256 shares) {
         _updateUser(msg.sender);
-        shares = _depositGoo(msg.sender, amount);
-        // _pullGoo also adds the amount to ArtGobblers to earn goo inflation
-        _pullGoo(amount);
-        emit DepositGoo(msg.sender, amount, shares);
-    }
 
-    function _depositGoo(address to, uint256 amount) internal returns (uint256 shares) {
         // TODO: do we need FullMath everywhere because goo amount can easily be >= 1e59? ArtGobblers also does not use FullMath but do they * 1e18 anywhere?
-        shares = (amount * 1e18) / _gooSharesPrice();
+        shares = (amount * 1e18) / _sharesPrice();
         if (totalSupply == 0) {
             // we send some tokens to the burn address to ensure gooSharePrice is never decreaasing (as it can't be reset by redeeming all shares)
             _mint(BURN_ADDRESS, MIN_GOO_SHARES_INITIAL_MINT);
             shares -= MIN_GOO_SHARES_INITIAL_MINT;
         }
         _totalGoo += amount;
-        _mint(to, shares);
+        _mint(msg.sender, shares);
+
+        // _pullGoo also adds the amount to ArtGobblers to earn goo inflation
+        _pullGoo(amount);
+        emit DepositGoo(msg.sender, amount, shares);
     }
 
     /// redeems all gobblers of the caller
-    function redeemGobblers(uint256[] calldata gobblerIds) external noReenter updateInflation {
+    function redeemGobblers(uint256[] calldata removalIndexesDescending, uint256[] calldata expectedGobblerIds) external noReenter updateInflation {
         _updateUser(msg.sender);
 
         uint32 sumMultiples = 0;
         unchecked {
-            for (uint256 i = 0; i < gobblerIds.length; i++) {
+            for (uint256 i = 0; i < expectedGobblerIds.length; i++) {
                 // no overflow as uint32 is the same type ArtGobblers uses
-                sumMultiples += uint32(IGobblers(_gobblers).getGobblerEmissionMultiple(gobblerIds[i]));
-                // TODO: super inefficient, will replace this algorithm soon
-                // no need to care about duplicates because duplicate ids would fail in _pushGobblers
-                bool found = false;
-                for (uint256 j = 0; j < gobblerDeposits[msg.sender].ids.length; j++) {
-                    if (gobblerDeposits[msg.sender].ids[j] == gobblerIds[i]) {
-                        gobblerDeposits[msg.sender].ids[j] =
-                            gobblerDeposits[msg.sender].ids[gobblerDeposits[msg.sender].ids.length - 1];
-                        gobblerDeposits[msg.sender].ids.pop();
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found) revert MismatchedGobbler(gobblerIds[i]);
+                sumMultiples += uint32(IGobblers(_gobblers).getGobblerEmissionMultiple(expectedGobblerIds[i]));
             }
         }
 
+        // expectedGobblerIds does not contain duplicates as `_pushGobblers` would fail. remove is safe
+        // remove fails if an id is not in packedIds
+        gobblerDeposits[msg.sender].packedIds.remove(removalIndexesDescending, expectedGobblerIds);
         gobblerDeposits[msg.sender].sumMultiples -= sumMultiples;
         _sumMultiples -= sumMultiples;
 
-        _pushGobblers(msg.sender, gobblerIds);
+        _pushGobblers(msg.sender, expectedGobblerIds);
     }
 
     function redeemGooShares(uint256 shares) external noReenter updateInflation returns (uint256 gooAmount) {
         _updateUser(msg.sender);
         // can directly read from _balanceOf instead of balanceOf as it has been accrued in `_updateUser`
         if (shares == type(uint256).max) shares = _balanceOf[msg.sender];
-        gooAmount = (shares * _gooSharesPrice()) / 1e18; // rounding down is correct
+        gooAmount = (shares * _sharesPrice()) / 1e18; // rounding down is correct
 
         _burn(msg.sender, shares);
         _totalGoo -= gooAmount;
@@ -263,7 +252,7 @@ contract GooStew is ERC20, Constants {
 
 
     /// @dev goo shares price denominated in goo: totalGoo * 1e18 / totalShares
-    function _gooSharesPrice() internal view returns (uint256) {
+    function _sharesPrice() internal view returns (uint256) {
         // when every goo share is redeemed this would reset and might cause issues for gobbler staking which also uses the goo price
         // but not all shares can ever be withdrawn because we minted MIN_GOO_SHARES_INITIAL_MINT to a dead address
         if (totalSupply == 0) return 1e18;
@@ -304,5 +293,29 @@ contract GooStew is ERC20, Constants {
                 IERC721(_gobblers).transferFrom(address(this), to, gobblerIds[i]);
             }
         }
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                        UTILITY VIEW FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
+    function getUserInfo(address user) external view returns (uint256[] memory gobblerIds, uint256 shares, uint32 sumMultiples, uint256 lastIndex) {
+        shares = balanceOf(user);
+        gobblerIds = gobblerDeposits[user].packedIds.getValues();
+        sumMultiples = gobblerDeposits[user].sumMultiples;
+        lastIndex = gobblerDeposits[user].lastIndex;
+    }
+
+    function getGlobalInfo() external view returns (uint256 sharesTotalSupply, uint32 sumMultiples, uint64 lastUpdate, uint256 lastIndex, uint256 price) {
+        sharesTotalSupply = totalSupply;
+        sumMultiples = _sumMultiples;
+        lastUpdate = uint64(_lastUpdate);
+        lastIndex = _gobblerSharesPerMultipleIndex;
+        price = _sharesPrice();
+    }
+
+    /// @notice returns the ibGOO price (denominated in goo)
+    /// @return price Goo per ibGoo computed as totalGooAmount * 1e18 / totalSupply
+    function sharesPrice() external view returns (uint256 price) {
+        price = _sharesPrice();
     }
 }
