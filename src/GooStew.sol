@@ -68,6 +68,7 @@ contract GooStew is ERC20, Constants {
         if (_lastUpdate == block.timestamp) return;
 
         (, uint256 rewardsGoo, uint256 rewardsGobblers) = _calculateUpdate();
+        _lastUpdate = block.timestamp; // update can now be set as following functions don't use it anymore
 
         // 1. update goo rewards: this updates _gooSharesPrice
         _totalGoo += rewardsGoo;
@@ -84,7 +85,6 @@ contract GooStew is ERC20, Constants {
             _gobblerSharesPerMultipleIndex += (mintShares * 1e18) / _sumMultiples;
         }
 
-        _lastUpdate = block.timestamp;
     }
 
     function _calculateUpdate()
@@ -161,7 +161,7 @@ contract GooStew is ERC20, Constants {
         // as `balanceOf` reflects an optimistic balance, we need to update `from` here s.t. users can transfer entire balance.
         // `to` does not need to be updated because correctness of user's inflation update logic is based only on gobbler emissionMultiple, not on balance
         _updateInflation();
-        if (from != address(0)) _updateUser(from);
+        _updateUser(from);
     }
 
     /*//////////////////////////////////////////////////////////////

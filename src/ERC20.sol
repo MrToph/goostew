@@ -164,7 +164,7 @@ abstract contract ERC20 {
     //////////////////////////////////////////////////////////////*/
 
     function _mint(address to, uint256 amount) internal virtual {
-        _beforeTokenTransfer(address(0), to, amount);
+        // _mint is only called from GooStew (not from this ERC20), so we don't need a hook, we manually ensure that everything is up-to-date
         totalSupply += amount;
 
         // Cannot overflow because the sum of all user
@@ -177,7 +177,7 @@ abstract contract ERC20 {
     }
 
     function _burn(address from, uint256 amount) internal virtual {
-        _beforeTokenTransfer(from, address(0), amount);
+        // _burn is only called from GooStew (not from this ERC20), so we don't need a hook, we manually ensure that everything is up-to-date
         _balanceOf[from] -= amount;
 
         // Cannot underflow because a user's balance

@@ -114,7 +114,6 @@ contract GooStewTest is BasicTest, Constants {
             stew.depositGoo(gooDeposits[1]);
         }
         vm.stopPrank();
-
         skip(delays[0]);
 
         // someone else deposits some multiple and goo again. time passes.
@@ -131,9 +130,7 @@ contract GooStewTest is BasicTest, Constants {
         skip(delays[1]);
 
         redeemAndAssertNoLoss(1, allGobblerIds[1], gobblerMultiples[1], gooDeposits[1], totalDelay);
-
         redeemAndAssertNoLoss(0, allGobblerIds[0], gobblerMultiples[0], gooDeposits[0], totalDelay);
-
         redeemAndAssertNoLoss(2, allGobblerIds[2], gobblerMultiples[2], gooDeposits[2], delays[1]);
     }
 
@@ -151,10 +148,12 @@ contract GooStewTest is BasicTest, Constants {
         vm.startPrank(_users[userId]);
 
         if (gobblerId > 0) {
+            console2.log("redeeming gobblers ...");
             uint256[] memory gobblerIds = new uint256[](1);
             gobblerIds[0] = gobblerId;
             stew.redeemGobblers(gobblerIds);
         }
+        console2.log("redeeming goo ...");
         uint256 gooAmount = stew.redeemGooShares(type(uint256).max);
         vm.stopPrank();
 
