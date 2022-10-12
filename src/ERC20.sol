@@ -164,7 +164,7 @@ abstract contract ERC20 {
     //////////////////////////////////////////////////////////////*/
 
     function _mint(address to, uint256 amount) internal virtual {
-        _beforeTokenTransfer(sender, recipient, amount);
+        _beforeTokenTransfer(address(0), to, amount);
         totalSupply += amount;
 
         // Cannot overflow because the sum of all user
@@ -177,7 +177,7 @@ abstract contract ERC20 {
     }
 
     function _burn(address from, uint256 amount) internal virtual {
-        _beforeTokenTransfer(sender, recipient, amount);
+        _beforeTokenTransfer(from, address(0), amount);
         _balanceOf[from] -= amount;
 
         // Cannot underflow because a user's balance
@@ -190,7 +190,7 @@ abstract contract ERC20 {
     }
 
     function _transfer(address from, address to, uint256 amount) internal virtual {
-        _beforeTokenTransfer(sender, recipient, amount);
+        _beforeTokenTransfer(from, to, amount);
         // reverts if not enough balance
         _balanceOf[from] -= amount;
 

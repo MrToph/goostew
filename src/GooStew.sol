@@ -115,6 +115,11 @@ contract GooStew is ERC20, Constants {
         rewardsGobblers = newTotalGoo - lastTotalGoo - rewardsGoo;
     }
 
+    /// anyone can update anyone
+    function updateUser(address user) external updateInflation {
+        _updateUser(user);
+    }
+
     function _updateUser(address user) internal {
         // accrue user's gobbler inflation: (diff of inflation / totalMultiple) * stakingMultiple
         // these tokens have already been minted in `_updateInflation`.
@@ -152,7 +157,7 @@ contract GooStew is ERC20, Constants {
             + _computeUnmintedShares(_gobblerSharesPerMultipleIndex, gobblerDeposits[account].lastIndex, userSumMultiples);
     }
 
-    function _beforeTokenTransfer(address from, address to, uint256 amount) internal virtual override {
+    function _beforeTokenTransfer(address from, address /* to */, uint256 /* amount */) internal virtual override {
         // as `balanceOf` reflects an optimistic balance, we need to update `from` here s.t. users can transfer entire balance.
         // `to` does not need to be updated because correctness of user's inflation update logic is based only on gobbler emissionMultiple, not on balance
         _updateInflation();
@@ -180,6 +185,19 @@ contract GooStew is ERC20, Constants {
         emit DepositGobblers(msg.sender, gobblerIds, sumMultiples);
     }
 
+    function _depositGobblers(address to, uint256[] calldata gobblerIds) internal returns (uint32 sumMultiples) {
+        unchecked {
+            for (uint256 i = 0; i < gobblerIds.length; i++) {
+                // no overflow as uint32 is the same type ArtGobblers uses
+                sumMultiples += uint32(IGobblers(_gobblers).getGobblerEmissionMultiple(gobblerIds[i]));
+                gobblerDeposits[to].ids.push(gobblerIds[i]);
+            }
+        }
+
+        gobblerDeposits[to].sumMultiples += sumMultiples;
+        _sumMultiples += sumMultiples;
+    }
+
     function depositGoo(uint256 amount) external noReenter updateInflation returns (uint256 shares) {
         _updateUser(msg.sender);
         shares = _depositGoo(msg.sender, amount);
@@ -200,32 +218,7 @@ contract GooStew is ERC20, Constants {
         _mint(to, shares);
     }
 
-    function _depositGobblers(address to, uint256[] calldata gobblerIds) internal returns (uint32 sumMultiples) {
-        unchecked {
-            for (uint256 i = 0; i < gobblerIds.length; i++) {
-                // no overflow as uint32 is the same type ArtGobblers uses
-                sumMultiples += uint32(IGobblers(_gobblers).getGobblerEmissionMultiple(gobblerIds[i]));
-                gobblerDeposits[to].ids.push(gobblerIds[i]);
-            }
-        }
-
-        gobblerDeposits[to].sumMultiples += sumMultiples;
-        _sumMultiples += sumMultiples;
-    }
-
-    function redeemGooShares(uint256 shares) external noReenter updateInflation returns (uint256 gooAmount) {
-        _updateUser(msg.sender);
-        // can directly read from _balanceOf instead of balanceOf as it has been accrued in `_updateUser`
-        if (shares == type(uint256).max) shares = _balanceOf[msg.sender];
-        gooAmount = (shares * _gooSharesPrice()) / 1e18; // rounding down is correct
-
-        _burn(msg.sender, shares);
-        _totalGoo -= gooAmount;
-
-        _pushGoo(msg.sender, gooAmount);
-    }
-
-    /// redeems all gobblers in the stakingId and redeems any accrued goo shares from the staking NFT
+    /// redeems all gobblers of the caller
     function redeemGobblers(uint256[] calldata gobblerIds) external noReenter updateInflation {
         _updateUser(msg.sender);
 
@@ -255,6 +248,19 @@ contract GooStew is ERC20, Constants {
 
         _pushGobblers(msg.sender, gobblerIds);
     }
+
+    function redeemGooShares(uint256 shares) external noReenter updateInflation returns (uint256 gooAmount) {
+        _updateUser(msg.sender);
+        // can directly read from _balanceOf instead of balanceOf as it has been accrued in `_updateUser`
+        if (shares == type(uint256).max) shares = _balanceOf[msg.sender];
+        gooAmount = (shares * _gooSharesPrice()) / 1e18; // rounding down is correct
+
+        _burn(msg.sender, shares);
+        _totalGoo -= gooAmount;
+
+        _pushGoo(msg.sender, gooAmount);
+    }
+
 
     /// @dev goo shares price denominated in goo: totalGoo * 1e18 / totalShares
     function _gooSharesPrice() internal view returns (uint256) {
