@@ -8,13 +8,14 @@ import {toDaysWadUnsafe} from "solmate/utils/SignedWadMath.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import {IGobblers} from "./IGobblers.sol";
 import {Constants} from "./Constants.sol";
+import {BoringBatchable} from "./BoringBatchable.sol";
 import {LibGOO} from "./LibGOO.sol";
 import {LibPackedArray} from "./LibPackedArray.sol";
-import {IGobblers} from "./IGobblers.sol";
 import {ERC20} from "./ERC20.sol";
 
-contract GooStew is ERC20, Constants {
+contract GooStew is ERC20, BoringBatchable, Constants {
     using LibString for uint256;
     using LibPackedArray for uint256[];
     using FixedPointMathLib for uint256;

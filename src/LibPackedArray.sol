@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.0;
 
-import "forge-std/console2.sol";
-
 /// @dev tighly packs values in range [1, 10_000] (max gobbler ID) into an array
 /// slots are filled with values from lsb to msb
 library LibPackedArray {
