@@ -1,6 +1,6 @@
-// https://github.com/transmissions11/goo-issuance/blob/648e65e66e43ff5c19681427e300ece9c0df1437/src/LibGOO.sol#L1
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.0;
+// Base: https://github.com/transmissions11/goo-issuance/blob/648e65e66e43ff5c19681427e300ece9c0df1437/src/LibGOO.sol#L1
 
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 

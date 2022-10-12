@@ -13,14 +13,25 @@ import "./ArtGobblersTest.sol";
 
 contract BasicTest is ArtGobblersTest, ERC1155TokenReceiver {
     GooStew public stew;
+    address[] internal _users;
 
     function setUp() public virtual override {
+        _users.push(address(0x1000));
+        _users.push(address(0x1001));
+        _users.push(address(0x1002));
+
         super.setUp();
         stew = new GooStew(address(gobblers), address(goo));
 
         _mintGoo(address(this), type(uint128).max);
         goo.approve(address(stew), type(uint256).max);
         gobblers.setApprovalForAll(address(stew), true);
+        for (uint256 i = 0; i < _users.length; i++) {
+            vm.startPrank(_users[i]);
+            goo.approve(address(stew), type(uint256).max);
+            gobblers.setApprovalForAll(address(stew), true);
+            vm.stopPrank();
+        }
     }
 
     function xtestGobblerMint() public {
@@ -30,7 +41,7 @@ contract BasicTest is ArtGobblersTest, ERC1155TokenReceiver {
         uint256[] memory gobblerIds = new uint256[](2);
 
         for (uint256 i = 0; i < multiples.length; i++) {
-            gobblerIds[i] = gobblers.mintGobblerExposed(uint32(multiples[i]));
+            gobblerIds[i] = gobblers.mintGobblerExposed(address(this), uint32(multiples[i]));
             assertEq(gobblers.ownerOf(gobblerIds[i]), address(this));
             assertEq(gobblers.getGobblerEmissionMultiple(gobblerIds[i]), multiples[i]);
         }
@@ -49,9 +60,9 @@ contract GooStewTest is BasicTest, Constants {
      * user redeems, should have received at least as much as they would have received on their own
      */
     function testNoLoss(
+        uint24[2] memory delays, // in seconds, max range ~200 days
         uint16[3] memory gobblerMultiples,
-        uint72[3] memory gooDeposits,
-        uint24[2] memory delays // in seconds, max range ~200 days
+        uint72[3] memory gooDeposits
     )
         public
     {
@@ -61,7 +72,8 @@ contract GooStewTest is BasicTest, Constants {
         // lower-bound user goo deposits to not fuzz test with tiny values that lead to rounding errors.
         for (uint256 i = 0; i < gooDeposits.length; i++) {
             if (gooDeposits[i] > 0) {
-                gooDeposits[i] = uint72(bound(gooDeposits[0], MIN_GOO_SHARES_INITIAL_MINT, type(uint72).max));
+                gooDeposits[i] = uint72(bound(gooDeposits[0], 1e18, type(uint72).max));
+                goo.transfer(_users[i], gooDeposits[i]);
             }
         }
 
@@ -70,68 +82,61 @@ contract GooStewTest is BasicTest, Constants {
         uint256[] memory allGobblerIds = new uint256[](gobblerMultiples.length);
         for (uint256 i = 0; i < gobblerMultiples.length; i++) {
             if (gobblerMultiples[i] > 0) {
-                allGobblerIds[i] = gobblers.mintGobblerExposed(gobblerMultiples[i]);
+                allGobblerIds[i] = gobblers.mintGobblerExposed(_users[i], gobblerMultiples[i]);
             }
         }
         uint256[] memory gobblerIds = new uint256[](1);
-        uint256[] memory stakingIds = new uint256[](3);
-        uint256[] memory gooShareAmounts = new uint256[](3);
 
         // deposit initial mint that is sent to burn address because first deposit can actually lead to a loss
         // in practice we will bootstrap the contract with this tiny amount of goo
-        stew.deposit(new uint256[](0), MIN_GOO_SHARES_INITIAL_MINT);
+        stew.depositGoo(MIN_GOO_SHARES_INITIAL_MINT);
 
         // someone deposits some multiple and goo
         console2.log("===== User 0 =====");
+        vm.startPrank(_users[0]);
         gobblerIds[0] = allGobblerIds[0];
         {
-            (uint256 stakingId,, uint256 gooShares) =
-                stew.deposit(gobblerIds[0] > 0 ? gobblerIds : new uint256[](0), gooDeposits[0]);
-            stakingIds[0] = stakingId;
-            gooShareAmounts[0] = gooShares;
+            if (gobblerIds[0] > 0) {
+                stew.depositGobblers(gobblerIds);
+            }
+            stew.depositGoo(gooDeposits[0]);
         }
+        vm.stopPrank();
 
         // user deposits some multiple and some goo. time passes.
         console2.log("===== User 1 =====");
+        vm.startPrank(_users[1]);
         gobblerIds[0] = allGobblerIds[1];
         {
-            (uint256 stakingId,, uint256 gooShares) =
-                stew.deposit(gobblerIds[0] > 0 ? gobblerIds : new uint256[](0), gooDeposits[1]);
-            stakingIds[1] = stakingId;
-            gooShareAmounts[1] = gooShares;
+            if (gobblerIds[0] > 0) {
+                stew.depositGobblers(gobblerIds);
+            }
+            stew.depositGoo(gooDeposits[1]);
         }
-
+        vm.stopPrank();
         skip(delays[0]);
 
         // someone else deposits some multiple and goo again. time passes.
         console2.log("===== User 2 =====");
+        vm.startPrank(_users[2]);
         gobblerIds[0] = allGobblerIds[2];
         {
-            (uint256 stakingId,, uint256 gooShares) =
-                stew.deposit(gobblerIds[0] > 0 ? gobblerIds : new uint256[](0), gooDeposits[2]);
-            stakingIds[2] = stakingId;
-            gooShareAmounts[2] = gooShares;
+            if (gobblerIds[0] > 0) {
+                stew.depositGobblers(gobblerIds);
+            }
+            stew.depositGoo(gooDeposits[2]);
         }
+        vm.stopPrank();
         skip(delays[1]);
 
-        redeemAndAssertNoLoss(
-            1, allGobblerIds[1], gooShareAmounts[1], stakingIds[1], gobblerMultiples[1], gooDeposits[1], totalDelay
-        );
-
-        redeemAndAssertNoLoss(
-            0, allGobblerIds[0], gooShareAmounts[0], stakingIds[0], gobblerMultiples[0], gooDeposits[0], totalDelay
-        );
-
-        redeemAndAssertNoLoss(
-            2, allGobblerIds[2], gooShareAmounts[2], stakingIds[2], gobblerMultiples[2], gooDeposits[2], delays[1]
-        );
+        redeemAndAssertNoLoss(1, allGobblerIds[1], gobblerMultiples[1], gooDeposits[1], totalDelay);
+        redeemAndAssertNoLoss(0, allGobblerIds[0], gobblerMultiples[0], gooDeposits[0], totalDelay);
+        redeemAndAssertNoLoss(2, allGobblerIds[2], gobblerMultiples[2], gooDeposits[2], delays[1]);
     }
 
     function redeemAndAssertNoLoss(
         uint256 userId,
         uint256 gobblerId,
-        uint256 gooShares,
-        uint256 stakingId,
         uint256 gobblerMultiple,
         uint256 gooDepositAmount,
         uint256 delay
@@ -140,12 +145,19 @@ contract GooStewTest is BasicTest, Constants {
     {
         // user redeems, should have received at least as much as they would have received on their own
         console2.log("===== Redeem User %s =====", userId);
-        uint256[] memory gobblerIds = new uint256[](1);
-        gobblerIds[0] = gobblerId;
-        uint256 gooAmount = stew.redeemGooShares(gooShares);
-        if (stakingId > 0) {
-            gooAmount += stew.redeemGobblers(stakingId, gobblerIds);
+        vm.startPrank(_users[userId]);
+
+        if (gobblerId > 0) {
+            console2.log("redeeming gobblers ...");
+            uint256[] memory gobblerIds = new uint256[](1);
+            gobblerIds[0] = gobblerId;
+            uint256[] memory removalIndexes = new uint256[](1);
+            removalIndexes[0] = 0; // only have a single gobbler
+            stew.redeemGobblers(removalIndexes, gobblerIds);
         }
+        console2.log("redeeming goo ...");
+        uint256 gooAmount = stew.redeemGooShares(type(uint256).max);
+        vm.stopPrank();
 
         uint256 totalGooNoStake = LibGOO.computeGOOBalance(
             gobblerMultiple,

@@ -9,4 +9,12 @@ optimizer_runs = 1000000
 bytecode_hash = "none"
 
 [fuzz]
-runs = 16384
+# runs = 16384
+runs = 256
+
+
+[rpc_endpoints]
+mainnet = "${ETHEREUM_RPC_URL}"
+
+[etherscan]
+mainnet = { key = "${ETHERSCAN_API_KEY}" }
