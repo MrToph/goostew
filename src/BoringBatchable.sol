@@ -15,15 +15,8 @@ pragma solidity ^0.8.0;
 // https://www.paradigm.xyz/2021/08/two-rights-might-make-a-wrong/
 
 interface IERC20Permit {
-    function permit(
-        address owner,
-        address spender,
-        uint256 value,
-        uint256 deadline,
-        uint8 v,
-        bytes32 r,
-        bytes32 s
-    ) external;
+    function permit(address owner, address spender, uint256 value, uint256 deadline, uint8 v, bytes32 r, bytes32 s)
+        external;
 }
 
 contract BaseBoringBatchable {
@@ -31,7 +24,7 @@ contract BaseBoringBatchable {
 
     /// @dev Helper function to extract a useful revert message from a failed call.
     /// If the returned data is malformed or not correctly abi encoded then this call can fail itself.
-    function _getRevertMsg(bytes memory _returnData) internal pure{
+    function _getRevertMsg(bytes memory _returnData) internal pure {
         // If the _res length is less than 68, then
         // the transaction failed with custom error or silently (without a revert message)
         if (_returnData.length < 68) revert BatchError(_returnData);
@@ -75,7 +68,9 @@ contract BoringBatchable is BaseBoringBatchable {
         uint8 v,
         bytes32 r,
         bytes32 s
-    ) public {
+    )
+        public
+    {
         token.permit(from, to, amount, deadline, v, r, s);
     }
 }
