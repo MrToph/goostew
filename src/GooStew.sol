@@ -39,6 +39,7 @@ contract GooStew is ERC20, BoringBatchable, Constants {
         uint256[] packedIds;
     }
     // shares * 1e18 / sumMultiples. shares is expected to be <= maxGooAmount ~ 2e30 => index <= 2e48 fits in 224 bits
+
     uint224 internal _gobblerSharesPerMultipleIndex;
     uint32 internal _sumMultiples; // sum of emissionMultiples of all deposited gobblers
     mapping(address => GobblerDepositInfo) public gobblerDeposits;
@@ -170,15 +171,7 @@ contract GooStew is ERC20, BoringBatchable, Constants {
             + _computeUnmintedShares(_gobblerSharesPerMultipleIndex, gobblerDeposits[account].lastIndex, userSumMultiples);
     }
 
-    function _beforeTokenTransfer(
-        address from,
-        address /* to */,
-        uint256 /* amount */
-    )
-        internal
-        virtual
-        override
-    {
+    function _beforeTokenTransfer(address from, address, /* to */ uint256 /* amount */ ) internal virtual override {
         // as `balanceOf` reflects an optimistic balance, we need to update `from` here s.t. users can transfer entire balance.
         // `to` does not need to be updated because correctness of user's inflation update logic is based only on gobbler emissionMultiple, not on balance
         _updateInflation();

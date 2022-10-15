@@ -180,7 +180,7 @@ contract GooStewManualTest is BasicTest, Constants {
 
         uint256 gooAmount = stew.redeemGooShares(type(uint256).max);
         assertEq(gooAmount, 2.13160000146e30);
-        (,,,uint256 lastIndex, uint256 sharesPrice) = stew.getGlobalInfo();
+        (,,, uint256 lastIndex, uint256 sharesPrice) = stew.getGlobalInfo();
         assertEq(sharesPrice, 1.460000001e27);
         assertEq(lastIndex, 9.125e33);
         uint256 shares = stew.depositGoo(gooAmount);
