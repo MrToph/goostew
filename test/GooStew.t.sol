@@ -14,6 +14,7 @@ import "./ArtGobblersTest.sol";
 contract BasicTest is ArtGobblersTest, ERC1155TokenReceiver {
     GooStew public stew;
     address[] internal _users;
+    address feeRecipient = address(0xfee);
 
     function setUp() public virtual override {
         _users.push(address(0x1000));
@@ -21,7 +22,7 @@ contract BasicTest is ArtGobblersTest, ERC1155TokenReceiver {
         _users.push(address(0x1002));
 
         super.setUp();
-        stew = new GooStew(address(gobblers), address(goo));
+        stew = new GooStew(address(gobblers), address(goo), feeRecipient);
 
         _mintGoo(address(this), type(uint128).max);
         goo.approve(address(stew), type(uint256).max);
@@ -48,7 +49,146 @@ contract BasicTest is ArtGobblersTest, ERC1155TokenReceiver {
     }
 }
 
-contract GooStewTest is BasicTest, Constants {
+contract GooStewManualTest is BasicTest, Constants {
+    function setUp() public virtual override {
+        super.setUp();
+        vm.warp(0);
+
+        // deposit initial goo
+        stew.depositGoo(MIN_GOO_SHARES_INITIAL_MINT);
+    }
+
+    function testFees() public {
+        // should fail if we try to turn on fees or change fee recipient
+        vm.expectRevert(Unauthorized.selector);
+        stew.setFeeRecipient(address(this));
+        vm.expectRevert(Unauthorized.selector);
+        stew.setFeeRate(0);
+
+        // deposit initial gobbler to start earning goo
+        uint256[] memory gobblerIds = new uint256[](1);
+        gobblerIds[0] = gobblers.mintGobblerExposed(address(this), 7);
+        stew.depositGobblers(gobblerIds);
+
+        // initially, fee rate should be zero
+        skip(1 days);
+        assertEq(stew.balanceOf(feeRecipient), 0);
+
+        // set fees
+        vm.prank(feeRecipient);
+        stew.setFeeRate(type(uint32).max / 10); // 10%
+        skip(1 days);
+
+        stew.updateUser(address(0));
+        assertGt(stew.balanceOf(feeRecipient), 0);
+    }
+
+    function testGobblersRedeem() public {
+        uint256[] memory gobblerIds = new uint256[](1);
+        gobblerIds[0] = gobblers.mintGobblerExposed(address(_users[0]), 7);
+
+        // user deposits
+        vm.prank(_users[0]);
+        stew.depositGobblers(gobblerIds);
+        assertEq(gobblers.ownerOf(gobblerIds[0]), address(stew));
+
+        // test cannot withdraw
+        skip(1 days);
+        uint256[] memory removalIndexes = new uint256[](1);
+        removalIndexes[0] = 0; // only have a single gobbler
+        vm.expectRevert(abi.encodeWithSignature("ValueNotFound(uint256)", 1));
+        stew.redeemGobblers(removalIndexes, gobblerIds);
+
+        // user can withdraw
+        vm.prank(_users[0]);
+        stew.redeemGobblers(removalIndexes, gobblerIds);
+        assertEq(gobblers.ownerOf(gobblerIds[0]), address(_users[0]));
+    }
+
+    function testOnlyOwnGobblersDeposit() public {
+        uint256[] memory gobblerIds = new uint256[](1);
+        gobblerIds[0] = gobblers.mintGobblerExposed(address(_users[0]), 7);
+
+        // try to deposit user1's gobbler
+        vm.expectRevert("WRONG_FROM");
+        stew.depositGobblers(gobblerIds);
+    }
+
+    function testRewardMath() public {
+        uint256[] memory userGooIds = new uint256[](2);
+        userGooIds[0] = gobblers.mintGobblerExposed(address(_users[0]), 3);
+        userGooIds[1] = gobblers.mintGobblerExposed(address(_users[1]), 1);
+        uint256[] memory userGooDeposits = new uint256[](2);
+        userGooDeposits[0] = 3e18;
+        userGooDeposits[1] = 6e18;
+        goo.transfer(_users[0], userGooDeposits[0]);
+        goo.transfer(_users[1], userGooDeposits[1]);
+
+        // user 0 deposits and 1 day passes
+        uint256[] memory gobblerIds = new uint256[](1);
+        gobblerIds[0] = userGooIds[0];
+        vm.startPrank(_users[0]);
+        stew.depositGobblers(gobblerIds);
+        stew.depositGoo(userGooDeposits[0]);
+        skip(1 days);
+        // they should have received the same amount of goo that they would have received on their own
+        uint256 gooEarned = stew.redeemGooShares(type(uint256).max);
+        assertGe( // in practice, it's slightly more because of the initial MIN_GOO_SHARES_INITIAL_MINT
+        gooEarned, LibGOO.computeGOOBalance(3, userGooDeposits[0], uint256(toDaysWadUnsafe(86400))));
+        // user 0 reinvests his initial
+        stew.depositGoo(userGooDeposits[0]);
+        vm.stopPrank();
+
+        // user 1 deposits and 1 day passes
+        gobblerIds[0] = userGooIds[1];
+        vm.startPrank(_users[1]);
+        stew.depositGobblers(gobblerIds);
+        stew.depositGoo(userGooDeposits[1]);
+        skip(1 days);
+        vm.stopPrank();
+
+        /**
+         * total goo balance M / 4 + sqrt(M * GOO) + GOO = 1 + sqrt(36) + 9 = 16
+         * user 0 individual balance: 3/4 + sqrt(3*3) + 3 = 6.75
+         * user 1 individual balance: 1/4 + sqrt(6) + 6 = 0.25 + 2.45 + 6 = 8.7
+         *
+         * user0 and user1 deposited go 1:2, so their gooReward should be split 1:2
+         * rewardsGoo = sqrt(36) / 2 = 3
+         * user0 and user1 deposited emissions 3:1, so their gobblerReward should be split 3:1
+         * rewardsGobblers = M/4 + sqrt(36) / 2 = 4
+         * user0: initialGoo + reward = 3 + 3 * 1/3 + 4 * 3/4 = 7
+         * user1: initialGoo + reward = 6 + 3 * 2/3 + 4 * 1/4 = 9
+         */
+        // user 0 withdraws
+        vm.prank(_users[0]);
+        gooEarned = stew.redeemGooShares(type(uint256).max);
+        assertGt(gooEarned, 7e18 * (1e6 - 1) / 1e6);
+        // user 1 withdraws
+        vm.prank(_users[1]);
+        gooEarned = stew.redeemGooShares(type(uint256).max);
+        assertGt(gooEarned, 9e18 * (1e6 - 1) / 1e6);
+    }
+
+    function testUpdateInflationNoOverflow() public {
+        // test that update inflation does not overflow after 20 years with max gobbler deposits
+        uint256[] memory gobblerIds = new uint256[](1);
+        uint32 maxEmissionMultiple = 10_000 * 8 * 2; // legendary gobbler minted with all gobblers using max emission multiple of 8
+        gobblerIds[0] = gobblers.mintGobblerExposed(address(this), maxEmissionMultiple);
+
+        stew.depositGobblers(gobblerIds);
+        skip(20 * 365 days);
+
+        uint256 gooAmount = stew.redeemGooShares(type(uint256).max);
+        assertEq(gooAmount, 2.13160000146e30);
+        (,,,uint256 lastIndex, uint256 sharesPrice) = stew.getGlobalInfo();
+        assertEq(sharesPrice, 1.460000001e27);
+        assertEq(lastIndex, 9.125e33);
+        uint256 shares = stew.depositGoo(gooAmount);
+        assertEq(shares, 1.46e21);
+    }
+}
+
+contract GooStewFuzzTest is BasicTest, Constants {
     function setUp() public virtual override {
         super.setUp();
         vm.warp(0);
