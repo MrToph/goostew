@@ -42,9 +42,8 @@ The full implementation is available as [GooStew.sol](./src/GooStew.sol).
 
 ## Further research
 
-1. To incentivize developers building this and other projects in the ArtGobblers ecosystem, the protocol could take a performance fee on the additional goo production. However, we can't efficiently compute the **additional** goo production in the smart contract: $g(t, M, \textrm{GOO}) - \sum_i g(t, m_i, \textrm{goo}_i)$ as $g(t, m_i, \textrm{goo}_i)$ changes non-linearly for each user on each update.
+1. To incentivize developers building this and other projects in the ArtGobblers ecosystem, the protocol could take a performance fee on the additional goo production. Using [philogy's math](https://github.com/Philogy/efficient-total-virtual-goo-tracking/blob/aced789852c12f6c7f3e8c1afe5385a7f96b787a/TECHNICAL.md), we can compute the _sum_ of individual goo balances and therefore the **additional** goo production in the smart contract: $g(t, M, \textrm{GOO}) - \sum_i g(t, m_i, \textrm{goo}_i)$.
 
-[^1]: The gobblers contribute the $M$ in $\Delta g(t, M, \textrm{GOO})$, therefore $t^2M$ is fully attributed to the gobblers. For the mixed term $t\sqrt{M\cdot \textrm{GOO}}$, just taking half of it works for some reason.
 
 # Appendix
 
@@ -60,15 +59,13 @@ $$
 \frac{m}{M}   (0.25 M t^2 + 0.5 t \sqrt{M G}) + \frac{g}{G}   (0.5 t \sqrt{M G} + G) &\geq 0.25 m t^2 + t \sqrt{m g} + g \\
 \frac{m}{M}   (0.25 M t^2 + 0.5 t \sqrt{M G}) + \frac{g}{G}   0.5 t \sqrt{M G} &\geq 0.25 m t^2 + t \sqrt{m g} \\
 \frac{m}{M} 0.5 t \sqrt{M G} + \frac{g}{G}   0.5 t \sqrt{M G} &\geq t \sqrt{m g} \\
-\frac{(\frac{m}{M} + \frac{g}{G})}{2} \sqrt{M G} &\geq \sqrt{m g} \\
-\frac{m G + g M}{2MG} \sqrt{M G} &\geq \sqrt{m g} \\
-\frac{m G + g M}{2 \sqrt{M G}} &\geq \sqrt{m g} \\
-m G + g M &\geq 2 \sqrt{M G m g}
+\left( \frac{m}{M} + \frac{g}{G} \right) \sqrt{M G} &\geq 2 \sqrt{m g} \\
+\frac{m}{M} + \frac{g}{G} &\geq 2 \sqrt{\frac{m}{M} \frac{g}{G}} \\
 \end{align*}
 $$
 
 By letting 
-$x = m G, y = g M$, we can simplify the equation to be
+$x = \frac{m}{M}, y = \frac{g}{G}$, we can simplify the equation to be
 
 
 $$
@@ -79,7 +76,7 @@ x - 2 \sqrt{xy} + y &\geq 0 \\
 \end{align*}
 $$
 
-This equation is true for all non-negative numbers $x, y$ because the square of any real number will be non-negative.
+This equation is true for all non-negative numbers $x, y$ because the square of any real number will be non-negative. Equality holds exactly if $a = b$, i.e., $g = \frac{m}{M} \cdot G$ which matches the result of optimally balancing goo from equation (5). If a user provides a different ratio, they will benefit from the protocol.
 
 <!-- (m/M) _ r\_\textrm{gobbler} + (g/G) _ (r\_\textrm{goo} + G) >= 0.25*m*t^2 + t*sqrt(m*g) + g
 (m/M) * (0.25*M*t^2 + 0.5*t*sqrt(M*G)) + (g/G) * (0.5*t*sqrt(M*G) + G) >= 0.25*m*t^2 + t*sqrt(m*g) + g
