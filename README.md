@@ -25,8 +25,8 @@ The additional goo produced by the protocol is distributed to users according to
 ```
 forge install
 forge build
-# copy .env.template and fill in the required env vars
-cp .env.template .env
+# copy example.env and fill in the required env vars
+cp example.env .env
 forge test
 ```
 
@@ -55,7 +55,7 @@ source .env
 anvil --accounts 1 --fork-url $ETHEREUM_RPC_URL --fork-block-number 15854780
 
 # deploy contracts to local node
-forge script script/DeploymentLocal.s.sol:Deployment --rpc-url local --private-key $PRIVATE_KEY_TEST --broadcast -vvvv
+forge script script/DeploymentLocal.s.sol:Deployment --rpc-url local --broadcast -vvvv
 
 # let web app know the deployment addresses
 cp broadcast/DeploymentLocal.s.sol/1/run-latest.json ../goostew-app/abis/deployment.json

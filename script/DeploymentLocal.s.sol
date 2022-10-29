@@ -21,17 +21,23 @@ contract Deployment is Script, Test, Utilities {
     MockGoo internal goo;
     MockArtGobblers internal gobblers;
     GooStew internal stew;
-    address internal immutable feeRecipient = address(0xfee);
-    address internal immutable user = address(0xfefe1337);
+    address internal constant feeRecipient = address(0xfee);
+    address internal immutable user = address(uint160(vm.envUint("ADDRESS_USER_TEST")));
+    address internal immutable npc;
+
+    constructor() {
+        string memory mnemonic = "test test test test test test test test test test test junk";
+        (npc,) = deriveRememberKey(mnemonic, 0);
+    }
 
     function setUp() public {}
 
     function run() public {
-        vm.startBroadcast();
+        vm.startBroadcast(npc);
         _deployMockGobblers();
-        skip(1 days); // for mint time delay to be over
         _deployGooStew();
         vm.stopBroadcast();
+
         _populateGooStew();
     }
 
@@ -64,7 +70,6 @@ contract Deployment is Script, Test, Utilities {
     }
 
     function _populateGooStew() private {
-        address npc = address(0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266); // test address
         vm.startBroadcast(npc);
 
         uint256[] memory ids = new uint256[](3);
@@ -84,7 +89,7 @@ contract Deployment is Script, Test, Utilities {
         _mintGobbler(user, 6);
         _mintGobbler(user, 7);
         _mintGobbler(user, 8);
-        _mintGoo(npc, 10e18);
+        _mintGoo(user, 10e18);
 
         vm.stopBroadcast();
     }
