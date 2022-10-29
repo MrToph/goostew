@@ -25,25 +25,46 @@ contract BenchmarksTest is ArtGobblersTest, ERC1155TokenReceiver {
         _mintGoo(address(this), type(uint128).max);
         goo.approve(address(stew), type(uint256).max);
         gobblers.setApprovalForAll(address(stew), true);
-        stew.depositGoo(1e12);
 
         for (uint256 i = 0; i < MINTED_GOBBLERS; ++i) {
             gobblers.mintGobblerExposed(address(this), uint32(6 + (i % 3)));
         }
+
+        // set contract into normal state: LAZY_MINT_ADDRESS balance, _gobblerSharesPerMultipleIndex, _sumMultiples not zero
+        address initializer = address(0x2);
+        vm.startPrank(initializer);
+        goo.approve(address(stew), type(uint256).max);
+        gobblers.setApprovalForAll(address(stew), true);
+
+        _mintGoo(initializer, 1e12);
+        stew.depositGoo(1e12);
+
+        uint256[] memory gobblerIds = new uint256[](1);
+        gobblerIds[0] = gobblers.mintGobblerExposed(initializer, 6);
+        stew.depositGobblers(gobblerIds);
+
+        skip(1 days); // call update once
+
+        stew.updateUser(initializer);
+        vm.stopPrank();
+
         skip(1 days); // let each test have to do an update which is the standard case
     }
 
-    function testDepositGoo() public {
+    function testDepositGooInitial() public {
+        // 0 balance before
         stew.depositGoo(10e18);
     }
 
-    function testDepositGobbler() public {
+    function testDepositGobblerInitial() public {
+        // 0 deposited gobblers before
         uint256[] memory gobblerIds = new uint256[](1);
         gobblerIds[0] = 1;
         stew.depositGobblers(gobblerIds);
     }
 
-    function testDepositGobblers() public {
+    function testDepositGobblersInitial() public {
+        // 0 deposited gobblers before
         uint256[] memory gobblerIds = new uint256[](10);
         for (uint256 i = 0; i < gobblerIds.length; ++i) {
             gobblerIds[i] = i + 1;
@@ -72,6 +93,11 @@ contract BenchmarksTest2 is ArtGobblersTest, ERC1155TokenReceiver {
         }
         stew.depositGobblers(gobblerIds);
         stew.depositGoo(10e18);
+
+        // set contract into normal state: LAZY_MINT_ADDRESS balance, _gobblerSharesPerMultipleIndex, _sumMultiples not zero
+        skip(1 days);
+        stew.updateUser(address(this));
+
         skip(1 days); // let each test have to do an update which is the standard case
     }
 
