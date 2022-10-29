@@ -25,5 +25,50 @@ The additional goo produced by the protocol is distributed to users according to
 ```
 forge install
 forge build
+# copy .env.template and fill in the required env vars
+cp .env.template .env
 forge test
 ```
+
+<details>
+<summary></summary>
+
+### Run Tests
+
+```sh
+source .env
+forge test -vvv
+```
+
+### Gas Benchmarks
+
+```sh
+forge snapshot --match-contract BenchmarksTest --diff
+```
+
+### Web app testing
+
+```sh
+source .env
+
+# start local anvil node forking from mainnet
+anvil --accounts 1 --fork-url $ETHEREUM_RPC_URL --fork-block-number 15854780
+
+# deploy contracts to local node
+forge script script/DeploymentLocal.s.sol:Deployment --rpc-url local --private-key $PRIVATE_KEY_TEST --broadcast -vvvv
+
+# let web app know the deployment addresses
+cp broadcast/DeploymentLocal.s.sol/1/run-latest.json ../goostew-app/abis/deployment.json
+```
+
+### Deployment
+
+```sh
+source .env
+
+# mainnet
+forge script script/DeploymentEthereum.s.sol:Deployment --rpc-url mainnet --private-key $PRIVATE_KEY --broadcast --verify --etherscan-api-key $ETHERSCAN_KEY -vvvv
+# if verification fails with "Etherscan could not detect the deployment.". Resume script
+forge script script/DeploymentEthereum.s.sol:Deployment --rpc-url mainnet --private-key $PRIVATE_KEY --resume --verify --etherscan-api-key $ETHERSCAN_KEY -vvvv
+```
+</details>

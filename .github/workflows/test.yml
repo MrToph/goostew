@@ -32,3 +32,8 @@ jobs:
         run: |
           forge test -vvv
         id: test
+
+      - name: Run Gas Benchmarks
+        run: |
+          forge snapshot --match-contract BenchmarksTest --diff
+        id: benchmark

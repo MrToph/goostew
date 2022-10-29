@@ -14,7 +14,7 @@ import "./ArtGobblersTest.sol";
 contract BasicTest is ArtGobblersTest, ERC1155TokenReceiver {
     GooStew public stew;
     address[] internal _users;
-    address feeRecipient = address(0xfee);
+    address internal immutable feeRecipient = address(0xfee);
 
     function setUp() public virtual override {
         _users.push(address(0x1000));
@@ -203,9 +203,7 @@ contract GooStewFuzzTest is BasicTest, Constants {
         uint24[2] memory delays, // in seconds, max range ~200 days
         uint16[3] memory gobblerMultiples,
         uint72[3] memory gooDeposits
-    )
-        public
-    {
+    ) public {
         // assumes & bounds
         vm.assume(delays[0] > 0 && delays[1] > 0);
         vm.assume(gooDeposits[0] != 0);
@@ -280,9 +278,7 @@ contract GooStewFuzzTest is BasicTest, Constants {
         uint256 gobblerMultiple,
         uint256 gooDepositAmount,
         uint256 delay
-    )
-        internal
-    {
+    ) internal {
         // user redeems, should have received at least as much as they would have received on their own
         console2.log("===== Redeem User %s =====", userId);
         vm.startPrank(_users[userId]);
