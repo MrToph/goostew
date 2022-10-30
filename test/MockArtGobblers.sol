@@ -20,9 +20,7 @@ contract MockArtGobblers is ArtGobblers {
         // URIs:
         string memory _baseUri,
         string memory _unrevealedUri
-    )
-        ArtGobblers(_merkleRoot, _mintStart, _goo, _pages, _team, _community, _randProvider, _baseUri, _unrevealedUri)
-    {}
+    ) ArtGobblers(_merkleRoot, _mintStart, _goo, _pages, _team, _community, _randProvider, _baseUri, _unrevealedUri) {}
 
     /// acts like calling `claimGobbler` + `revealGobblers(1)` + sets custom emission multiple
     function mintGobblerExposed(address to, uint32 emissionMultiple) external returns (uint256 gobblerId) {

@@ -55,9 +55,7 @@ library LibPackedArray {
         uint256[] storage arr,
         uint256[] calldata removalIndexesDesc,
         uint256[] calldata expectedRemovedValues
-    )
-        external
-    {
+    ) external {
         if (removalIndexesDesc.length != expectedRemovedValues.length) {
             revert ArrayLengthMismatch();
         }

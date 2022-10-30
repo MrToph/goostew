@@ -7,15 +7,15 @@ libs = ['lib']
 via_ir = false # avoid stack too deep and use optimizations
 optimizer_runs = 1000000
 bytecode_hash = "none"
-fork_block_number = 15737000
 
 [fuzz]
 # runs = 16384
 runs = 256
 
-
 [rpc_endpoints]
 mainnet = "${ETHEREUM_RPC_URL}"
+local = "http://localhost:8545"
 
 [etherscan]
 mainnet = { key = "${ETHERSCAN_API_KEY}" }
+

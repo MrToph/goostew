@@ -6,6 +6,7 @@ pragma solidity >=0.8.0;
  * modified to:
  * - expose internal `_transfer`
  * - expose `balanceOf`
+ * - rename totalSupply to internal _totalSupply, add external totalSupply to match style
  * - added `_beforeTokenTransfer` hook
  */
 
@@ -36,7 +37,7 @@ abstract contract ERC20 {
                               ERC20 STORAGE
     //////////////////////////////////////////////////////////////*/
 
-    uint256 public totalSupply;
+    uint256 internal _totalSupply;
 
     mapping(address => uint256) internal _balanceOf;
 
@@ -68,6 +69,10 @@ abstract contract ERC20 {
     /*//////////////////////////////////////////////////////////////
                                ERC20 LOGIC
     //////////////////////////////////////////////////////////////*/
+    function totalSupply() external view returns (uint256) {
+        return _totalSupply;
+    }
+
     function balanceOf(address account) external virtual returns (uint256) {
         return _balanceOf[account];
     }
@@ -165,7 +170,7 @@ abstract contract ERC20 {
 
     function _mint(address to, uint256 amount) internal virtual {
         // _mint is only called from GooStew (not from this ERC20), so we don't need a hook, we manually ensure that everything is up-to-date
-        totalSupply += amount;
+        _totalSupply += amount;
 
         // Cannot overflow because the sum of all user
         // balances can't exceed the max uint256 value.
@@ -183,7 +188,7 @@ abstract contract ERC20 {
         // Cannot underflow because a user's balance
         // will never be larger than the total supply.
         unchecked {
-            totalSupply -= amount;
+            _totalSupply -= amount;
         }
 
         emit Transfer(from, address(0), amount);

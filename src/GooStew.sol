@@ -24,12 +24,13 @@ contract GooStew is ERC20, BoringBatchable, Constants {
     string internal constant BASE_URI = "https://nft.goostew.com/";
     address internal immutable _gobblers;
     address internal immutable _goo;
+    // all 3 in a single slot
     uint64 internal _lastUpdate; // last time _updateInflation (deposit/redeem) was called
-    address public feeRecipient; // fee on the goo rewards, 1e18 = 100%
-    uint32 public feeRate; // fee on the goo rewards, type(uint32).max = 100%
+    address internal _feeRecipient; // fee on the goo rewards, 1e18 = 100%
+    uint32 internal _feeRate; // fee on the goo rewards, type(uint32).max = 100%
 
     // Goo related
-    // @note we use ERC20.totalSupply as _totalShares
+    // @note we use ERC20._totalSupply as _totalShares
     uint256 internal _totalGoo; // includes deposited + earned inflation (for both gobblers and goo stakers)
 
     // Gobbler related
@@ -52,8 +53,8 @@ contract GooStew is ERC20, BoringBatchable, Constants {
         IERC20(goo).approve(gobblers, type(uint256).max);
         // ArtGobblers always has approval to take gobblers, no need to set
 
-        feeRecipient = initialFeeRecipient;
-        // feeRate is initially zero
+        _feeRecipient = initialFeeRecipient;
+        // _feeRate is initially zero
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -66,67 +67,104 @@ contract GooStew is ERC20, BoringBatchable, Constants {
         _;
     }
 
+    // @dev: defensive programming: this function is called before any gobbler redeems, therefore we'd rather have an unexpected overflow than an unexpected overflow revert due to checked math. (we treat the gobblers as more valuable than the goo in this contract.)
     function _updateInflation() internal {
         // if we updated this block, there won't be any new rewards. can exit early
-        if (_lastUpdate == block.timestamp) return;
-
-        (, uint256 rewardsGoo, uint256 rewardsGobblers, uint256 rewardsFee) = _calculateUpdate();
+        // load from same storage slot
+        uint64 lastUpdate = _lastUpdate;
+        address feeRecipient = _feeRecipient;
+        uint32 feeRate = _feeRate;
+        if (lastUpdate == block.timestamp) return;
         _lastUpdate = uint64(block.timestamp); // update can now be set as subsequent calls don't use it anymore
 
+        uint256 totalGoo = _totalGoo;
+        uint256 totalShares = _totalSupply;
+
+        // load from same storage slot
+        uint224 gobblerSharesPerMultipleIndex = _gobblerSharesPerMultipleIndex;
+        uint32 sumMultiples = _sumMultiples;
+
+        (uint256 rewardsGoo, uint256 rewardsGobblers, uint256 rewardsFee) = _calculateUpdate({
+            lastTotalGoo: totalGoo,
+            lastUpdate: lastUpdate,
+            sumMultiples: sumMultiples,
+            feeRate: feeRate
+        });
+
         // 1. update goo rewards: this updates _sharesPrice
-        _totalGoo += rewardsGoo;
+        unchecked {
+            // unchecked: rewardsGoo is derived from gooBalance() which is capped by maxGooAmount
+            totalGoo += rewardsGoo;
+        }
 
         // 2. update gobbler rewards
         // if there were no deposited gobblers, rewards should be zero anyway, can skip
-        if (_sumMultiples > 0) {
+        if (sumMultiples > 0) {
             // act as if we deposited rewardsGobblers for goo shares and distributed among current gobbler stakers
             // i.e., mint new goo shares with rewardsGobblers, keeping the _sharesPrice the same
             // we can assume that totalSuplpy > 0, i.e., fees turned on only after there's a goo deposit. saves 1 sload
-            uint256 mintShares = (rewardsGobblers * 1e18) / _sharesPrice();
-            _totalGoo += rewardsGobblers;
-            // mintShares is rounded down, new shares price should never decrease because of a rounding error
-            _mint(LAZY_MINT_ADDRESS, mintShares);
-            _gobblerSharesPerMultipleIndex += uint224((mintShares * 1e18) / _sumMultiples);
+            unchecked {
+                // unchecked: rewardsGobblers is derived from gooBalance() which is capped by maxGooAmount. mintShares is therefore also capped.
+                uint256 mintShares =
+                    (rewardsGobblers * 1e18) / _sharesPrice({totalShares: totalShares, totalGoo: totalGoo});
+                totalGoo += rewardsGobblers;
+                // mintShares is rounded down, new shares price should never decrease because of a rounding error
+                _mint(LAZY_MINT_ADDRESS, mintShares);
+                totalShares += mintShares; // update cached totalShares instead of reading totalSupply from storage
+                _gobblerSharesPerMultipleIndex += uint224((mintShares * 1e18) / sumMultiples);
+            }
         }
 
         // 3. deposit rewardsFee goo amount for feeRecipient
         if (rewardsFee > 0) {
-            // we can assume that totalSuplpy > 0, i.e., fees turned on only after there's a goo deposit. saves 1 sload
-            uint256 shares = (rewardsFee * 1e18) / _sharesPrice();
-            _totalGoo += rewardsFee;
-            _mint(feeRecipient, shares);
+            unchecked {
+                // unchecked: rewardsFee is derived from gooBalance() which is capped by maxGooAmount. shares is therefore also capped.
+                // we can assume that totalSuplpy > 0, i.e., fees turned on only after there's a goo deposit. saves 1 sload
+                uint256 shares = (rewardsFee * 1e18) / _sharesPrice({totalShares: totalShares, totalGoo: totalGoo});
+                totalGoo += rewardsFee;
+                _mint(feeRecipient, shares);
+            }
         }
+
+        // set cached values
+        _totalGoo = totalGoo;
+        // totalShares already set in _mint
     }
 
-    function _calculateUpdate()
+    function _calculateUpdate(uint256 lastTotalGoo, uint64 lastUpdate, uint32 sumMultiples, uint32 feeRate)
         internal
         view
-        returns (uint256 newTotalGoo, uint256 rewardsGoo, uint256 rewardsGobblers, uint256 rewardsFee)
+        returns (uint256 rewardsGoo, uint256 rewardsGobblers, uint256 rewardsFee)
     {
-        // other people can compound us by triggering `updateUserGooBalance(gooStew)`, for example, in ArtGobblers._transferFrom
-        // however, as g(t) is auto-compounding it doesn't change the final value computed here in `gooBalance()`
-        // exception: someone adds goo or gobblers. goo cannot be added as `addGoo` always adds to `msg.sender`
-        // gobblers can be added increasing our emissionMultiple. we would gain more goo than expected but
-        // compute distribution on our snapshot, therefore no loss property is correct. excess would go to gobblers
+        // unchecked: safe because we're using the exact same math as in `IGobblers(_gobblers).gooBalance(address(this))`.
+        unchecked {
+            // adversaries can compound us by triggering `updateUserGooBalance(gooStew)`, for example, in ArtGobblers._transferFrom
+            // however, as g(t) is auto-compounding it doesn't change the final value computed here in `gooBalance()`
+            // exception: someone adds goo or gobblers. goo cannot be added as `addGoo` always adds to `msg.sender`
+            // gobblers can be added increasing our emissionMultiple. we would gain more goo than expected but
+            // compute distribution on our snapshot, therefore no loss property is correct. excess would go to gobblers
 
-        // newTotalGoo = g(t, M, GOO) = t^2 / 4 + t * sqrt(_sumMultiples * lastTotalGoo) + lastTotalGoo
-        newTotalGoo = IGobblers(_gobblers).gooBalance(address(this));
+            // newTotalGoo = g(t, M, GOO) = t^2 / 4 + t * sqrt(_sumMultiples * lastTotalGoo) + lastTotalGoo
+            uint256 newTotalGoo = IGobblers(_gobblers).gooBalance(address(this));
 
-        uint256 lastTotalGoo = _totalGoo;
-        uint256 timeElapsedWad = uint256(toDaysWadUnsafe(block.timestamp - _lastUpdate));
-        // uint256 recomputedNewTotalGoo = LibGOO.computeGOOBalance(
-        //     _sumMultiples,
-        //     lastTotalGoo,
-        //     timeElapsedWad
-        // );
+            uint256 timeElapsedWad = uint256(toDaysWadUnsafe(block.timestamp - lastUpdate));
+            // uint256 recomputedNewTotalGoo = LibGOO.computeGOOBalance(
+            //     _sumMultiples,
+            //     lastTotalGoo,
+            //     timeElapsedWad
+            // );
 
-        // rewardsGoo = t * sqrt(M*GOO) / 2
-        rewardsGoo = timeElapsedWad.mulWadDown((_sumMultiples * lastTotalGoo * 1e18).sqrt()) / 2;
-        // rewardsGobblers = t^2 * M + t * sqrt(M*GOO) / 2 = g(t, M, GOO) - GOO - rewardsGoo
-        rewardsGobblers = newTotalGoo - lastTotalGoo - rewardsGoo;
+            // timeSqrtMGOO = t * sqrt(M*GOO)
+            uint256 timeSqrtMGOO =
+                newTotalGoo - lastTotalGoo - ((sumMultiples * timeElapsedWad.mulWadDown(timeElapsedWad)) >> 2);
+            // rewardsGoo = t * sqrt(M*GOO) / 2
+            rewardsGoo = timeSqrtMGOO / 2;
+            // rewardsGobblers = t^2 * M + t * sqrt(M*GOO) / 2 = g(t, M, GOO) - GOO - rewardsGoo
+            rewardsGobblers = newTotalGoo - lastTotalGoo - rewardsGoo;
 
-        rewardsFee = (rewardsGoo * feeRate) / type(uint32).max;
-        rewardsGoo -= rewardsFee;
+            rewardsFee = (rewardsGoo * feeRate) / type(uint32).max;
+            rewardsGoo -= rewardsFee;
+        }
     }
 
     /// anyone can update anyone
@@ -174,8 +212,12 @@ contract GooStew is ERC20, BoringBatchable, Constants {
     function _beforeTokenTransfer(address from, address, /* to */ uint256 /* amount */ ) internal virtual override {
         // as `balanceOf` reflects an optimistic balance, we need to update `from` here s.t. users can transfer entire balance.
         // `to` does not need to be updated because correctness of user's inflation update logic is based only on gobbler emissionMultiple, not on balance
-        _updateInflation();
-        _updateUser(from);
+        // we can also skip updating shares balance if `from` does not have any deposited gobblers. not updating `gobblerDeposits[from].lastIndex` in this case is okay because it is always updated before any gobblers are deposited. i.e., it is always updated before changing `sumMultiples`. `updateInflation` must only be called when user's `sumMultiples` changes
+        // short-circuit if it's LAZY_MINT_ADDRESS to avoid storage read on _updateUser transfer from lazy mint address
+        if (from != LAZY_MINT_ADDRESS && gobblerDeposits[from].sumMultiples > 0) {
+            _updateInflation();
+            _updateUser(from);
+        }
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -216,7 +258,7 @@ contract GooStew is ERC20, BoringBatchable, Constants {
 
         // FullMath not required, max goo amount after 20 years is ~2e30
         shares = (amount * 1e18) / _sharesPrice();
-        if (totalSupply == 0) {
+        if (_totalSupply == 0) {
             // we send some tokens to the burn address to ensure gooSharePrice is never decreaasing (as it can't be reset by redeeming all shares)
             _mint(BURN_ADDRESS, MIN_GOO_SHARES_INITIAL_MINT);
             shares -= MIN_GOO_SHARES_INITIAL_MINT;
@@ -267,10 +309,14 @@ contract GooStew is ERC20, BoringBatchable, Constants {
 
     /// @dev goo shares price denominated in goo: totalGoo * 1e18 / totalShares
     function _sharesPrice() internal view returns (uint256) {
+        return _sharesPrice({totalShares: _totalSupply, totalGoo: _totalGoo});
+    }
+
+    function _sharesPrice(uint256 totalShares, uint256 totalGoo) internal view returns (uint256) {
         // when every goo share is redeemed this would reset and might cause issues for gobbler staking which also uses the goo price
         // but not all shares can ever be withdrawn because we minted MIN_GOO_SHARES_INITIAL_MINT to a dead address
-        if (totalSupply == 0) return 1e18;
-        return (_totalGoo * 1e18) / totalSupply;
+        if (totalShares == 0) return 1e18;
+        return (totalGoo * 1e18) / totalShares;
     }
 
     /// @dev also adds `amount` to our virtual goo balance in ArtGobblers
@@ -312,21 +358,29 @@ contract GooStew is ERC20, BoringBatchable, Constants {
     /*//////////////////////////////////////////////////////////////
                             FEE LOGIC
     //////////////////////////////////////////////////////////////*/
+    function feeRecipient() external view returns (address) {
+        return _feeRecipient;
+    }
+
+    function feeRate() external view returns (uint256) {
+        return _feeRate;
+    }
+
     function setFeeRecipient(address recipient)
         external
         updateInflation // update first s.t. fees until now are given to old recipient
     {
-        if (msg.sender != feeRecipient) revert Unauthorized();
-        feeRecipient = recipient;
+        if (msg.sender != _feeRecipient) revert Unauthorized();
+        _feeRecipient = recipient;
     }
 
     function setFeeRate(uint32 rate)
         external
         updateInflation // update first s.t. old fees are applied on rewards up until now
     {
-        if (msg.sender != feeRecipient) revert Unauthorized();
+        if (msg.sender != _feeRecipient) revert Unauthorized();
         if (rate > type(uint32).max / 10) revert InvalidArguments(); // max fee is 10%
-        feeRate = rate;
+        _feeRate = rate;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -348,7 +402,7 @@ contract GooStew is ERC20, BoringBatchable, Constants {
         view
         returns (uint256 sharesTotalSupply, uint32 sumMultiples, uint64 lastUpdate, uint256 lastIndex, uint256 price)
     {
-        sharesTotalSupply = totalSupply;
+        sharesTotalSupply = _totalSupply;
         sumMultiples = _sumMultiples;
         lastUpdate = _lastUpdate;
         lastIndex = _gobblerSharesPerMultipleIndex;

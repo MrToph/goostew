@@ -68,9 +68,7 @@ contract BoringBatchable is BaseBoringBatchable {
         uint8 v,
         bytes32 r,
         bytes32 s
-    )
-        public
-    {
+    ) public {
         token.permit(from, to, amount, deadline, v, r, s);
     }
 }
