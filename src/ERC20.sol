@@ -8,6 +8,9 @@ pragma solidity >=0.8.0;
  * - expose `balanceOf`
  * - rename totalSupply to internal _totalSupply, add external totalSupply to match style
  * - added `_beforeTokenTransfer` hook
+ * - added `_delayedMint` function. Note: GooStew breaks the assumption that totalSupply = sum of balances.
+ *         Instead, totalSupply = sum of updated balances + rounding error (if all users were updated at the same time).
+ *         GooStew "delay allocates" the total amount for all users by updating the `totalSupply`, but the individual user balances are only increased when a user delay-mints.
  */
 
 /// @notice Modern and gas efficient ERC20 + EIP-2612 implementation.
@@ -206,6 +209,18 @@ abstract contract ERC20 {
         }
 
         emit Transfer(msg.sender, to, amount);
+    }
+
+    function _delayMint(address to, uint256 amount) internal virtual {
+        // no _totalSupply increase, this already happened in _delayAllocate
+
+        // Cannot overflow because the sum of all user
+        // balances can't exceed the max uint256 value.
+        unchecked {
+            _balanceOf[to] += amount;
+        }
+
+        emit Transfer(address(0), to, amount);
     }
 
     /**

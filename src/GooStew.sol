@@ -68,67 +68,31 @@ contract GooStew is ERC20, BoringBatchable, Constants {
 
     // @dev: defensive programming: this function is called before any gobbler redeems, therefore we'd rather have an unexpected overflow than an unexpected overflow revert due to checked math. (we treat the gobblers as more valuable than the goo in this contract.)
     function _updateInflation() internal {
-        // if we updated this block, there won't be any new rewards. can exit early
-        // load from same storage slot
-        uint64 lastUpdate = _lastUpdate;
-        address feeReceiver = feeRecipient;
-        uint32 feePercentage = feeRate;
-        if (lastUpdate == block.timestamp) return;
-        _lastUpdate = uint64(block.timestamp); // update can now be set as subsequent calls don't use it anymore
+        (
+            bool requiresUpdate,
+            uint256 newTotalGoo,
+            uint256 newTotalShares,
+            uint224 newGobblerSharesPerMultipleIndex,
+            address feeReceiver,
+            uint256 sharesAllocatedToFeeReceiver,
+            uint256 rewardsGoo,
+            uint256 rewardsGobblers,
+            uint256 rewardsFee
+        ) = _calculateUpdate();
 
-        uint256 totalGoo = _totalGoo;
-        uint256 totalShares = _totalSupply;
+        _lastUpdate = uint64(block.timestamp);
+        if (!requiresUpdate) return;
 
-        // load from same storage slot
-        uint224 gobblerSharesPerMultipleIndex = _gobblerSharesPerMultipleIndex;
-        uint32 sumMultiples = _sumMultiples;
-
-        (uint256 rewardsGoo, uint256 rewardsGobblers, uint256 rewardsFee) = _calculateUpdate({
-            lastTotalGoo: totalGoo,
-            lastUpdate: lastUpdate,
-            sumMultiples: sumMultiples,
-            feePercentage: feePercentage
-        });
-
-        // 1. update goo rewards: this updates _sharesPrice
-        unchecked {
-            // unchecked: rewardsGoo is derived from gooBalance() which is capped by maxGooAmount
-            totalGoo += rewardsGoo;
+        if (sharesAllocatedToFeeReceiver > 0) {
+            // note: this sets totalSupply but we will overwrite it later. `totalShares` already includes `sharesAllocatedToFeeReceiver`
+            _mint(feeReceiver, sharesAllocatedToFeeReceiver);
         }
 
-        // 2. update gobbler rewards
-        // if there were no deposited gobblers, rewards should be zero anyway, can skip
-        if (sumMultiples > 0) {
-            // act as if we deposited rewardsGobblers for goo shares and distributed among current gobbler stakers
-            // i.e., mint new goo shares with rewardsGobblers, keeping the _sharesPrice the same
-            // we can assume that totalSupply > 0, i.e., fees turned on only after there's a goo deposit. saves 1 sload
-            unchecked {
-                // unchecked: rewardsGobblers is derived from gooBalance() which is capped by maxGooAmount. mintShares is therefore also capped.
-                uint256 mintShares =
-                    (rewardsGobblers * 1e18) / _sharesPrice({totalShares: totalShares, totalGoo: totalGoo});
-                totalGoo += rewardsGobblers;
-                // mintShares is rounded down, new shares price should never decrease because of a rounding error
-                _mint(LAZY_MINT_ADDRESS, mintShares);
-                totalShares += mintShares; // update cached totalShares instead of reading totalSupply from storage
-                _gobblerSharesPerMultipleIndex =
-                    gobblerSharesPerMultipleIndex + uint224((mintShares * 1e18) / sumMultiples);
-            }
-        }
+        // set new values
+        _totalGoo = newTotalGoo;
+        _totalSupply = newTotalShares;
+        _gobblerSharesPerMultipleIndex = newGobblerSharesPerMultipleIndex;
 
-        // 3. deposit rewardsFee goo amount for feeRecipient
-        if (rewardsFee > 0) {
-            unchecked {
-                // unchecked: rewardsFee is derived from gooBalance() which is capped by maxGooAmount. shares is therefore also capped.
-                // we can assume that totalSupply > 0, i.e., fees turned on only after there's a goo deposit. saves 1 sload
-                uint256 shares = (rewardsFee * 1e18) / _sharesPrice({totalShares: totalShares, totalGoo: totalGoo});
-                totalGoo += rewardsFee;
-                _mint(feeReceiver, shares);
-            }
-        }
-
-        // set cached values
-        _totalGoo = totalGoo;
-        // totalShares already set in _mint
         emit InflationUpdate({
             timestamp: uint40(block.timestamp), // safe for human years
             rewardsGoo: rewardsGoo,
@@ -137,7 +101,84 @@ contract GooStew is ERC20, BoringBatchable, Constants {
         });
     }
 
-    function _calculateUpdate(uint256 lastTotalGoo, uint64 lastUpdate, uint32 sumMultiples, uint32 feePercentage)
+    // if `requiresUpdate` is false, the other return variables are all zero
+    function _calculateUpdate()
+        internal
+        view
+        returns (
+            bool requiresUpdate,
+            uint256 newTotalGoo,
+            uint256 newTotalShares,
+            uint224 newGobblerSharesPerMultipleIndex,
+            address feeReceiver,
+            uint256 sharesAllocatedToFeeReceiver,
+            uint256 rewardsGoo,
+            uint256 rewardsGobblers,
+            uint256 rewardsFee
+        )
+    {
+        // load from same storage slot
+        uint64 lastUpdate = _lastUpdate;
+        feeReceiver = feeRecipient;
+        uint32 feePercentage = feeRate;
+
+        // if we updated this block, there won't be any new rewards
+        if (lastUpdate != block.timestamp) {
+            requiresUpdate = true;
+
+            newTotalGoo = _totalGoo;
+            newTotalShares = _totalSupply;
+
+            // load from same storage slot
+            newGobblerSharesPerMultipleIndex = _gobblerSharesPerMultipleIndex;
+            uint32 sumMultiples = _sumMultiples;
+
+            (rewardsGoo, rewardsGobblers, rewardsFee) = _calculateRewards({
+                lastTotalGoo: newTotalGoo,
+                lastUpdate: lastUpdate,
+                sumMultiples: sumMultiples,
+                feePercentage: feePercentage
+            });
+
+            // 1. update goo rewards: this updates _sharesPrice
+            unchecked {
+                // unchecked: rewardsGoo is derived from gooBalance() which is capped by maxGooAmount
+                newTotalGoo += rewardsGoo;
+            }
+
+            // 2. update gobbler rewards
+            // if there were no deposited gobblers, rewards should be zero anyway, can skip
+            if (sumMultiples > 0) {
+                // act as if we deposited rewardsGobblers for goo shares and distributed among current gobbler stakers
+                // i.e., mint new goo shares with rewardsGobblers, keeping the _sharesPrice the same
+                // we can assume that totalSupply > 0, i.e., fees turned on only after there's a goo deposit. saves 1 sload
+                unchecked {
+                    // unchecked: rewardsGobblers is derived from gooBalance() which is capped by maxGooAmount. mintShares is therefore also capped.
+                    uint256 mintShares =
+                        (rewardsGobblers * 1e18) / _sharesPrice({totalShares: newTotalShares, totalGoo: newTotalGoo});
+                    newTotalGoo += rewardsGobblers;
+                    // mintShares is rounded down, new shares price should never decrease because of a rounding error
+                    // we're delay-allocating the new shares for _all_ users here without actually minting to an address
+                    newTotalShares += mintShares; // update cached totalShares instead of reading totalSupply from storage
+                    newGobblerSharesPerMultipleIndex += uint224((mintShares * 1e18) / sumMultiples);
+                }
+            }
+
+            // 3. deposit rewardsFee goo amount for feeRecipient
+            if (rewardsFee > 0) {
+                unchecked {
+                    // unchecked: rewardsFee is derived from gooBalance() which is capped by maxGooAmount. shares is therefore also capped.
+                    // we can assume that totalSupply > 0, i.e., fees turned on only after there's a goo deposit. saves 1 sload
+                    sharesAllocatedToFeeReceiver =
+                        (rewardsFee * 1e18) / _sharesPrice({totalShares: newTotalShares, totalGoo: newTotalGoo});
+                    newTotalGoo += rewardsFee;
+                    newTotalShares += sharesAllocatedToFeeReceiver;
+                }
+            }
+        }
+    }
+
+    function _calculateRewards(uint256 lastTotalGoo, uint64 lastUpdate, uint32 sumMultiples, uint32 feePercentage)
         internal
         view
         returns (uint256 rewardsGoo, uint256 rewardsGobblers, uint256 rewardsFee)
@@ -191,7 +232,7 @@ contract GooStew is ERC20, BoringBatchable, Constants {
         uint256 shares = _computeUnmintedShares(currentGlobalIndex, lastUserIndex, userSumMultiples);
         gobblerDeposits[user].lastIndex = currentGlobalIndex;
         if (shares > 0) {
-            _transfer(LAZY_MINT_ADDRESS, user, shares);
+            _delayMint(user, shares);
         }
     }
 
@@ -220,8 +261,7 @@ contract GooStew is ERC20, BoringBatchable, Constants {
         // as `balanceOf` reflects an optimistic balance, we need to update `from` here s.t. users can transfer entire balance.
         // `to` does not need to be updated because correctness of user's inflation update logic is based only on gobbler emissionMultiple, not on balance
         // we can also skip updating shares balance if `from` does not have any deposited gobblers. not updating `gobblerDeposits[from].lastIndex` in this case is okay because it is always updated before any gobblers are deposited. i.e., it is always updated before changing `sumMultiples`. `updateInflation` must only be called when user's `sumMultiples` changes
-        // short-circuit if it's LAZY_MINT_ADDRESS to avoid storage read on _updateUser transfer from lazy mint address
-        if (from != LAZY_MINT_ADDRESS && gobblerDeposits[from].sumMultiples > 0) {
+        if (gobblerDeposits[from].sumMultiples > 0) {
             _updateInflation();
             _updateUser(from);
         }
