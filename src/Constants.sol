@@ -13,4 +13,5 @@ abstract contract Constants {
 
     event DepositGobblers(address indexed owner, uint256[] gobblerIds, uint32 sumMultiples);
     event DepositGoo(address indexed owner, uint256 amount, uint256 shares);
+    event InflationUpdate(uint40 timestamp, uint256 rewardsGoo, uint256 rewardsGobblers, uint256 rewardsFee);
 }
