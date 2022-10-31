@@ -5,7 +5,6 @@ abstract contract Constants {
     uint256 public constant MIN_GOO_SHARES_INITIAL_MINT = 1e12;
     // solmate prevents us from minting to 0 address
     address internal constant BURN_ADDRESS = address(0xdeaDDeADDEaDdeaDdEAddEADDEAdDeadDEADDEaD);
-    address internal constant LAZY_MINT_ADDRESS = address(0x1);
 
     error Unauthorized();
     error InvalidArguments();
