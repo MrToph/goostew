@@ -52,12 +52,13 @@ forge snapshot --match-contract BenchmarksTest --diff
 source .env
 
 # start local anvil node forking from mainnet
-anvil --accounts 1 --fork-url $ETHEREUM_RPC_URL --fork-block-number 15854780
+anvil --accounts 1 --fork-url $ETHEREUM_RPC_URL --fork-block-number 15854780 --port 8546
 
 # deploy contracts to local node
-forge script script/DeploymentLocal.s.sol:Deployment --rpc-url local --broadcast -vvvv
+forge script script/DeploymentLocal.s.sol:Deployment --rpc-url local --broadcast -vv
 
-# let web app know the deployment addresses
+# let web app know the ABI & deployment addresses
+cp out/GooStew.sol/GooStew.json ../goostew-app/abis/GooStew.json
 cp broadcast/DeploymentLocal.s.sol/1/run-latest.json ../goostew-app/abis/deployment.json
 ```
 

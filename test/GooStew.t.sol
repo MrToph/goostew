@@ -114,6 +114,18 @@ contract GooStewManualTest is BasicTest, Constants {
         stew.depositGobblers(gobblerIds);
     }
 
+    function testOnlyRevealedGobblersDeposit() public {
+        skip(1 days);
+        bytes32[] memory proof;
+        uint256 gobblerId = gobblers.claimGobbler(proof);
+        uint256[] memory gobblerIds = new uint256[](1);
+        gobblerIds[0] = gobblerId;
+
+        // try to deposit user1's gobbler
+        vm.expectRevert(abi.encodeWithSignature("UnrevealedGobblerDeposit(uint256)", gobblerId));
+        stew.depositGobblers(gobblerIds);
+    }
+
     function testRewardMath() public {
         uint256[] memory userGooIds = new uint256[](2);
         userGooIds[0] = gobblers.mintGobblerExposed(address(_users[0]), 3);

@@ -3,7 +3,7 @@ pragma solidity >=0.8.0;
 
 /// @title LibPackedArray
 /// @author cmichel
-/// @dev tighly packs values in range [1, 10_000] into an array. slots are filled with values from lsb to msb
+/// @dev tighly packs values in range [1, 10_000] into an array. slots are filled with values from lsb to msb. An invariant is that there are no "holes" in the array, i.e., no zero value in between values. The `remove` function accounts for this by moving values around.
 library LibPackedArray {
     error ArrayLengthMismatch();
     error ArrayNotSorted();

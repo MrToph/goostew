@@ -237,8 +237,12 @@ contract GooStew is ERC20, BoringBatchable, Constants {
 
         unchecked {
             for (uint256 i = 0; i < gobblerIds.length; i++) {
+                uint256 gobblerMultiple = IGobblers(_gobblers).getGobblerEmissionMultiple(gobblerIds[i]);
+                // revealing a gobbler changes its emissionMultiple but we don't update the user's sumMultiples on reveal.
+                // disallow unrevealed gobbler deposits
+                if (gobblerMultiple == 0) revert UnrevealedGobblerDeposit(gobblerIds[i]);
                 // no overflow as uint32 is the same type ArtGobblers uses
-                sumMultiples += uint32(IGobblers(_gobblers).getGobblerEmissionMultiple(gobblerIds[i]));
+                sumMultiples += uint32(gobblerMultiple);
             }
         }
 

@@ -14,7 +14,7 @@ runs = 256
 
 [rpc_endpoints]
 mainnet = "${ETHEREUM_RPC_URL}"
-local = "http://localhost:8545"
+local = "http://localhost:8546"
 
 [etherscan]
 mainnet = { key = "${ETHERSCAN_API_KEY}" }
