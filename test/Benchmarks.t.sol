@@ -20,7 +20,7 @@ contract BenchmarksTest is ArtGobblersTest, ERC1155TokenReceiver {
 
     function setUp() public virtual override {
         super.setUp();
-        stew = new GooStew(address(gobblers), address(goo), feeRecipient);
+        stew = new GooStew(IGobblers(address(gobblers)), IERC20(address(goo)), feeRecipient);
 
         _mintGoo(address(this), type(uint128).max);
         goo.approve(address(stew), type(uint256).max);
@@ -80,7 +80,7 @@ contract BenchmarksTest2 is ArtGobblersTest, ERC1155TokenReceiver {
 
     function setUp() public virtual override {
         super.setUp();
-        stew = new GooStew(address(gobblers), address(goo), feeRecipient);
+        stew = new GooStew(IGobblers(address(gobblers)), IERC20(address(goo)), feeRecipient);
 
         _mintGoo(address(this), type(uint128).max);
         goo.approve(address(stew), type(uint256).max);

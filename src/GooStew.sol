@@ -7,7 +7,6 @@ import {LibString} from "solmate/utils/LibString.sol";
 import {toDaysWadUnsafe} from "solmate/utils/SignedWadMath.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
-import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {IGobblers} from "./IGobblers.sol";
 import {Constants} from "./Constants.sol";
 import {BoringBatchable} from "./BoringBatchable.sol";
@@ -22,8 +21,8 @@ contract GooStew is ERC20, BoringBatchable, Constants {
 
     // accounting related
     string internal constant BASE_URI = "https://nft.goostew.com/";
-    address internal immutable _gobblers;
-    address internal immutable _goo;
+    IGobblers internal immutable _gobblers;
+    IERC20 internal immutable _goo;
     // all 3 in a single slot
     uint64 internal _lastUpdate; // last time _updateInflation (deposit/redeem) was called
     address internal _feeRecipient; // fee on the goo rewards, 1e18 = 100%
@@ -45,12 +44,12 @@ contract GooStew is ERC20, BoringBatchable, Constants {
     uint32 internal _sumMultiples; // sum of emissionMultiples of all deposited gobblers
     mapping(address => GobblerDepositInfo) public gobblerDeposits;
 
-    constructor(address gobblers, address goo, address initialFeeRecipient)
+    constructor(IGobblers gobblers, IERC20 goo, address initialFeeRecipient)
         ERC20("Inflation-bearing Goo", "ibGOO", 18)
     {
         _gobblers = gobblers;
         _goo = goo;
-        IERC20(goo).approve(gobblers, type(uint256).max);
+        // ArtGobblers.addGoo(uint256) does not require approvals, no allowance need to be given
         // ArtGobblers always has approval to take gobblers, no need to set
 
         _feeRecipient = initialFeeRecipient;
@@ -102,7 +101,7 @@ contract GooStew is ERC20, BoringBatchable, Constants {
         if (sumMultiples > 0) {
             // act as if we deposited rewardsGobblers for goo shares and distributed among current gobbler stakers
             // i.e., mint new goo shares with rewardsGobblers, keeping the _sharesPrice the same
-            // we can assume that totalSuplpy > 0, i.e., fees turned on only after there's a goo deposit. saves 1 sload
+            // we can assume that totalSupply > 0, i.e., fees turned on only after there's a goo deposit. saves 1 sload
             unchecked {
                 // unchecked: rewardsGobblers is derived from gooBalance() which is capped by maxGooAmount. mintShares is therefore also capped.
                 uint256 mintShares =
@@ -119,7 +118,7 @@ contract GooStew is ERC20, BoringBatchable, Constants {
         if (rewardsFee > 0) {
             unchecked {
                 // unchecked: rewardsFee is derived from gooBalance() which is capped by maxGooAmount. shares is therefore also capped.
-                // we can assume that totalSuplpy > 0, i.e., fees turned on only after there's a goo deposit. saves 1 sload
+                // we can assume that totalSupply > 0, i.e., fees turned on only after there's a goo deposit. saves 1 sload
                 uint256 shares = (rewardsFee * 1e18) / _sharesPrice({totalShares: totalShares, totalGoo: totalGoo});
                 totalGoo += rewardsFee;
                 _mint(feeRecipient, shares);
@@ -144,8 +143,9 @@ contract GooStew is ERC20, BoringBatchable, Constants {
             // gobblers can be added increasing our emissionMultiple. we would gain more goo than expected but
             // compute distribution on our snapshot, therefore no loss property is correct. excess would go to gobblers
 
-            // newTotalGoo = g(t, M, GOO) = t^2 / 4 + t * sqrt(_sumMultiples * lastTotalGoo) + lastTotalGoo
-            uint256 newTotalGoo = IGobblers(_gobblers).gooBalance(address(this));
+            // newTotalGoo = g(t, M, GOO) = t^2 / 4 * M + t * sqrt(M * GOO) + GOO
+            // where M = sumMultiples, GOO = lastTotalGoo
+            uint256 newTotalGoo = _gobblers.gooBalance(address(this));
 
             uint256 timeElapsedWad = uint256(toDaysWadUnsafe(block.timestamp - lastUpdate));
             // uint256 recomputedNewTotalGoo = LibGOO.computeGOOBalance(
@@ -237,7 +237,7 @@ contract GooStew is ERC20, BoringBatchable, Constants {
 
         unchecked {
             for (uint256 i = 0; i < gobblerIds.length; i++) {
-                uint256 gobblerMultiple = IGobblers(_gobblers).getGobblerEmissionMultiple(gobblerIds[i]);
+                uint256 gobblerMultiple = _gobblers.getGobblerEmissionMultiple(gobblerIds[i]);
                 // revealing a gobbler changes its emissionMultiple but we don't update the user's sumMultiples on reveal.
                 // disallow unrevealed gobbler deposits
                 if (gobblerMultiple == 0) revert UnrevealedGobblerDeposit(gobblerIds[i]);
@@ -284,9 +284,9 @@ contract GooStew is ERC20, BoringBatchable, Constants {
 
         uint32 sumMultiples = 0;
         unchecked {
-            for (uint256 i = 0; i < expectedGobblerIds.length; i++) {
+            for (uint256 i = 0; i < expectedGobblerIds.length; ++i) {
                 // no overflow as uint32 is the same type ArtGobblers uses
-                sumMultiples += uint32(IGobblers(_gobblers).getGobblerEmissionMultiple(expectedGobblerIds[i]));
+                sumMultiples += uint32(_gobblers.getGobblerEmissionMultiple(expectedGobblerIds[i]));
             }
         }
 
@@ -325,36 +325,36 @@ contract GooStew is ERC20, BoringBatchable, Constants {
 
     /// @dev also adds `amount` to our virtual goo balance in ArtGobblers
     function _pullGoo(uint256 amount) internal {
-        IERC20(_goo).transferFrom(msg.sender, address(this), amount);
+        _goo.transferFrom(msg.sender, address(this), amount);
         // always store all received goo in ArtGobblers as a virtual balance. this contract never holds any goo except by users doing direct transfers
-        IGobblers(_gobblers).addGoo(amount);
+        _gobblers.addGoo(amount);
     }
 
     function _pushGoo(address to, uint256 amount) internal {
         // defensive programming, should never happen that we miscalculated. but in unforseen issues, we don't want to revert and just withdraw what we can
         uint256 gooBalance = IGobblers(_gobblers).gooBalance(address(this));
         uint256 toTransfer = gooBalance < amount ? gooBalance : amount;
-        IGobblers(_gobblers).removeGoo(toTransfer);
-        IERC20(_goo).transfer(to, toTransfer);
+        _gobblers.removeGoo(toTransfer);
+        _goo.transfer(to, toTransfer);
     }
 
     /// @dev reverts on duplicates in `gobblerIds` or if gobbler cannot be transferred from msg.sender
     function _pullGobblers(uint256[] memory gobblerIds) internal {
         unchecked {
-            for (uint256 i = 0; i < gobblerIds.length; i++) {
+            for (uint256 i = 0; i < gobblerIds.length; ++i) {
                 // also "stakes" these gobblers to ArtGobblers, we gain their emissionMultiples
-                IERC721(_gobblers).transferFrom(msg.sender, address(this), gobblerIds[i]);
+                _gobblers.transferFrom(msg.sender, address(this), gobblerIds[i]);
             }
         }
     }
 
     function _pushGobblers(address to, uint256[] memory gobblerIds) internal {
         unchecked {
-            for (uint256 i = 0; i < gobblerIds.length; i++) {
+            for (uint256 i = 0; i < gobblerIds.length; ++i) {
                 // this also accrues inflation for us and
                 // "unstakes" them from ArtGobblers, we lose the emissionMultiples
                 // no `safeTransferFrom` because if you call this function we expect you can handle receiving the NFT (to == msg.sender)
-                IERC721(_gobblers).transferFrom(address(this), to, gobblerIds[i]);
+                _gobblers.transferFrom(address(this), to, gobblerIds[i]);
             }
         }
     }
