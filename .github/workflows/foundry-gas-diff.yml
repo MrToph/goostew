@@ -38,7 +38,7 @@ jobs:
       - name: Compare gas reports
         uses: Rubilmax/foundry-gas-diff@v3.9
         with:
-          sortCriteria: avg,max # optionnally sort diff rows by criteria
+          sortCriteria: avg,max # optionally sort diff rows by criteria
           sortOrders: desc,asc # and directions
           ignore: test/**/* # optionally filter out gas reports from specific paths
         id: gas_diff

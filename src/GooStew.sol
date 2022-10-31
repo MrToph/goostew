@@ -49,7 +49,7 @@ contract GooStew is ERC20, BoringBatchable, Constants {
     {
         _gobblers = gobblers;
         _goo = goo;
-        // goo.approve(gobblers, type(uint256).max);
+        // ArtGobblers.addGoo(uint256) does not require approvals, no allowance need to be given
         // ArtGobblers always has approval to take gobblers, no need to set
 
         _feeRecipient = initialFeeRecipient;
