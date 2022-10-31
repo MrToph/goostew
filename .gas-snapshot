@@ -1,5 +1,5 @@
-BenchmarksTest:testDepositGobblerInitial() (gas: 171697)
-BenchmarksTest:testDepositGobblersInitial() (gas: 333284)
+BenchmarksTest:testDepositGobblerInitial() (gas: 171731)
+BenchmarksTest:testDepositGobblersInitial() (gas: 333624)
 BenchmarksTest:testDepositGooInitial() (gas: 141042)
 BenchmarksTest2:testBalanceOf() (gas: 12599)
 BenchmarksTest2:testGetGlobalInfo() (gas: 14625)
