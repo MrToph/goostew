@@ -25,8 +25,8 @@ contract GooStew is ERC20, BoringBatchable, Constants {
     IERC20 internal immutable _goo;
     // all 3 in a single slot
     uint64 internal _lastUpdate; // last time _updateInflation (deposit/redeem) was called
-    address internal _feeRecipient; // fee on the goo rewards, 1e18 = 100%
-    uint32 internal _feeRate; // fee on the goo rewards, type(uint32).max = 100%
+    address public feeRecipient; // fee on the goo rewards, 1e18 = 100%
+    uint32 public feeRate; // fee on the goo rewards, type(uint32).max = 100%
 
     // Goo related
     // @note we use ERC20._totalSupply as _totalShares
@@ -44,16 +44,16 @@ contract GooStew is ERC20, BoringBatchable, Constants {
     uint32 internal _sumMultiples; // sum of emissionMultiples of all deposited gobblers
     mapping(address => GobblerDepositInfo) public gobblerDeposits;
 
-    constructor(IGobblers gobblers, IERC20 goo, address initialFeeRecipient)
+    constructor(address gobblers, address goo, address initialFeeRecipient)
         ERC20("Inflation-bearing Goo", "ibGOO", 18)
     {
-        _gobblers = gobblers;
-        _goo = goo;
+        _gobblers = IGobblers(gobblers);
+        _goo = IERC20(goo);
         // ArtGobblers.addGoo(uint256) does not require approvals, no allowance need to be given
         // ArtGobblers always has approval to take gobblers, no need to set
 
-        _feeRecipient = initialFeeRecipient;
-        // _feeRate is initially zero
+        feeRecipient = initialFeeRecipient;
+        // feeRate is initially zero
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -71,8 +71,8 @@ contract GooStew is ERC20, BoringBatchable, Constants {
         // if we updated this block, there won't be any new rewards. can exit early
         // load from same storage slot
         uint64 lastUpdate = _lastUpdate;
-        address feeRecipient = _feeRecipient;
-        uint32 feeRate = _feeRate;
+        address feeReceiver = feeRecipient;
+        uint32 feePercentage = feeRate;
         if (lastUpdate == block.timestamp) return;
         _lastUpdate = uint64(block.timestamp); // update can now be set as subsequent calls don't use it anymore
 
@@ -87,7 +87,7 @@ contract GooStew is ERC20, BoringBatchable, Constants {
             lastTotalGoo: totalGoo,
             lastUpdate: lastUpdate,
             sumMultiples: sumMultiples,
-            feeRate: feeRate
+            feePercentage: feePercentage
         });
 
         // 1. update goo rewards: this updates _sharesPrice
@@ -110,7 +110,8 @@ contract GooStew is ERC20, BoringBatchable, Constants {
                 // mintShares is rounded down, new shares price should never decrease because of a rounding error
                 _mint(LAZY_MINT_ADDRESS, mintShares);
                 totalShares += mintShares; // update cached totalShares instead of reading totalSupply from storage
-                _gobblerSharesPerMultipleIndex += uint224((mintShares * 1e18) / sumMultiples);
+                _gobblerSharesPerMultipleIndex =
+                    gobblerSharesPerMultipleIndex + uint224((mintShares * 1e18) / sumMultiples);
             }
         }
 
@@ -121,7 +122,7 @@ contract GooStew is ERC20, BoringBatchable, Constants {
                 // we can assume that totalSupply > 0, i.e., fees turned on only after there's a goo deposit. saves 1 sload
                 uint256 shares = (rewardsFee * 1e18) / _sharesPrice({totalShares: totalShares, totalGoo: totalGoo});
                 totalGoo += rewardsFee;
-                _mint(feeRecipient, shares);
+                _mint(feeReceiver, shares);
             }
         }
 
@@ -130,7 +131,7 @@ contract GooStew is ERC20, BoringBatchable, Constants {
         // totalShares already set in _mint
     }
 
-    function _calculateUpdate(uint256 lastTotalGoo, uint64 lastUpdate, uint32 sumMultiples, uint32 feeRate)
+    function _calculateUpdate(uint256 lastTotalGoo, uint64 lastUpdate, uint32 sumMultiples, uint32 feePercentage)
         internal
         view
         returns (uint256 rewardsGoo, uint256 rewardsGobblers, uint256 rewardsFee)
@@ -162,7 +163,7 @@ contract GooStew is ERC20, BoringBatchable, Constants {
             // rewardsGobblers = t^2 * M + t * sqrt(M*GOO) / 2 = g(t, M, GOO) - GOO - rewardsGoo
             rewardsGobblers = newTotalGoo - lastTotalGoo - rewardsGoo;
 
-            rewardsFee = (rewardsGoo * feeRate) / type(uint32).max;
+            rewardsFee = (rewardsGoo * feePercentage) / type(uint32).max;
             rewardsGoo -= rewardsFee;
         }
     }
@@ -316,7 +317,7 @@ contract GooStew is ERC20, BoringBatchable, Constants {
         return _sharesPrice({totalShares: _totalSupply, totalGoo: _totalGoo});
     }
 
-    function _sharesPrice(uint256 totalShares, uint256 totalGoo) internal view returns (uint256) {
+    function _sharesPrice(uint256 totalShares, uint256 totalGoo) internal pure returns (uint256) {
         // when every goo share is redeemed this would reset and might cause issues for gobbler staking which also uses the goo price
         // but not all shares can ever be withdrawn because we minted MIN_GOO_SHARES_INITIAL_MINT to a dead address
         if (totalShares == 0) return 1e18;
@@ -362,29 +363,21 @@ contract GooStew is ERC20, BoringBatchable, Constants {
     /*//////////////////////////////////////////////////////////////
                             FEE LOGIC
     //////////////////////////////////////////////////////////////*/
-    function feeRecipient() external view returns (address) {
-        return _feeRecipient;
-    }
-
-    function feeRate() external view returns (uint256) {
-        return _feeRate;
-    }
-
     function setFeeRecipient(address recipient)
         external
         updateInflation // update first s.t. fees until now are given to old recipient
     {
-        if (msg.sender != _feeRecipient) revert Unauthorized();
-        _feeRecipient = recipient;
+        if (msg.sender != feeRecipient) revert Unauthorized();
+        feeRecipient = recipient;
     }
 
     function setFeeRate(uint32 rate)
         external
         updateInflation // update first s.t. old fees are applied on rewards up until now
     {
-        if (msg.sender != _feeRecipient) revert Unauthorized();
+        if (msg.sender != feeRecipient) revert Unauthorized();
         if (rate > type(uint32).max / 10) revert InvalidArguments(); // max fee is 10%
-        _feeRate = rate;
+        feeRate = rate;
     }
 
     /*//////////////////////////////////////////////////////////////

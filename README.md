@@ -20,18 +20,19 @@ The additional goo produced by the protocol is distributed to users according to
 - `ibGoo`: When depositing any goo, the protocol issues _inflation-bearing goo_ tokens which are a claim on the ever-increasing total goo pot. Market making goo is tough because the total goo supply inflates quadratically and goo LP positions don't earn any of the goo inflation. We see `ibGoo` as a better choice for providing goo liquidity.
 
 
-## Development
 
-```
+
+<details><summary><h2>Development</h2></summary>
+
+### Installation
+
+```sh
 forge install
 forge build
 # copy example.env and fill in the required env vars
 cp example.env .env
 forge test
 ```
-
-<details>
-<summary></summary>
 
 ### Run Tests
 

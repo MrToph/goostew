@@ -22,7 +22,7 @@ contract BasicTest is ArtGobblersTest, ERC1155TokenReceiver {
         _users.push(address(0x1002));
 
         super.setUp();
-        stew = new GooStew(IGobblers(address(gobblers)), IERC20(address(goo)), feeRecipient);
+        stew = new GooStew(address(gobblers), address(goo), feeRecipient);
 
         _mintGoo(address(this), type(uint128).max);
         goo.approve(address(stew), type(uint256).max);

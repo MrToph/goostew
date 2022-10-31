@@ -20,7 +20,7 @@ contract BenchmarksTest is ArtGobblersTest, ERC1155TokenReceiver {
 
     function setUp() public virtual override {
         super.setUp();
-        stew = new GooStew(IGobblers(address(gobblers)), IERC20(address(goo)), feeRecipient);
+        stew = new GooStew(address(gobblers), address(goo), feeRecipient);
 
         _mintGoo(address(this), type(uint128).max);
         goo.approve(address(stew), type(uint256).max);
@@ -80,7 +80,7 @@ contract BenchmarksTest2 is ArtGobblersTest, ERC1155TokenReceiver {
 
     function setUp() public virtual override {
         super.setUp();
-        stew = new GooStew(IGobblers(address(gobblers)), IERC20(address(goo)), feeRecipient);
+        stew = new GooStew(address(gobblers), address(goo), feeRecipient);
 
         _mintGoo(address(this), type(uint128).max);
         goo.approve(address(stew), type(uint256).max);
@@ -102,21 +102,19 @@ contract BenchmarksTest2 is ArtGobblersTest, ERC1155TokenReceiver {
     }
 
     function testGetUserInfo() public view {
-        (uint256[] memory gobblerIds, uint256 shares, uint32 sumMultiples, uint256 lastIndex) =
-            stew.getUserInfo(address(this));
+        stew.getUserInfo(address(this));
     }
 
     function testGetGlobalInfo() public view {
-        (uint256 sharesTotalSupply, uint32 sumMultiples, uint64 lastUpdate, uint256 lastIndex, uint256 price) =
-            stew.getGlobalInfo();
+        stew.getGlobalInfo();
     }
 
     function testSharesPrice() public view {
-        uint256 price = stew.sharesPrice();
+        stew.sharesPrice();
     }
 
     function testBalanceOf() public view {
-        uint256 amount = stew.balanceOf(address(this));
+        stew.balanceOf(address(this));
     }
 
     function testUpdate() public {
