@@ -7,6 +7,9 @@ libs = ['lib']
 via_ir = false # avoid stack too deep and use optimizations
 optimizer_runs = 1000000
 bytecode_hash = "none"
+verbosity = 0
+
+gas_reports = ['GooStew']
 
 [fuzz]
 # runs = 16384
