@@ -129,6 +129,12 @@ contract GooStew is ERC20, BoringBatchable, Constants {
         // set cached values
         _totalGoo = totalGoo;
         // totalShares already set in _mint
+        emit InflationUpdate({
+            timestamp: uint40(block.timestamp), // safe for human years
+            rewardsGoo: rewardsGoo,
+            rewardsGobblers: rewardsGobblers,
+            rewardsFee: rewardsFee
+        });
     }
 
     function _calculateUpdate(uint256 lastTotalGoo, uint64 lastUpdate, uint32 sumMultiples, uint32 feePercentage)

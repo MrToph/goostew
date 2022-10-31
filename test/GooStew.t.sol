@@ -78,9 +78,19 @@ contract GooStewManualTest is BasicTest, Constants {
         vm.prank(feeRecipient);
         stew.setFeeRate(type(uint32).max / 10); // 10%
         skip(1 days);
+        vm.recordLogs();
+        stew.updateUser(address(0)); // trigger update for share price increase
+        Vm.Log[] memory logs = vm.getRecordedLogs();
 
-        stew.updateUser(address(0));
-        assertGt(stew.balanceOf(feeRecipient), 0);
+        assertEq(logs.length, 3, "unexpected events length"); // two Transfers, InflationUpdate
+        Vm.Log memory log = logs[logs.length - 1];
+        assertEq(log.topics[0], keccak256("InflationUpdate(uint40,uint256,uint256,uint256)"), "unexpected event");
+        (, , , uint256 rewardsFee) =
+            abi.decode(log.data, (uint40, uint256, uint256, uint256));
+
+        vm.prank(feeRecipient);
+        uint256 gooFees = stew.redeemGooShares(type(uint256).max);
+        assertApproxEqRel(gooFees, rewardsFee, 1e6 /* 1e-12 max error */);
     }
 
     function testGobblersRedeem() public {
