@@ -134,6 +134,23 @@ contract GooStewManualTest is BasicTest, Constants {
         stew.depositGobblers(gobblerIds);
     }
 
+    function testBalanceAccuracy() public {
+        uint256[] memory gobblerIds = new uint256[](1);
+        gobblerIds[0] = gobblers.mintGobblerExposed(address(this), 7);
+        stew.depositGobblers(gobblerIds);
+        stew.depositGoo(1e18);
+        uint256 sharesAfterDeposit = stew.balanceOf(address(this));
+
+        // skip time, no update call but balanceOf should still reflect the rewards accrued to gobbler depositors
+        skip(1 days);
+        uint256 shares = stew.balanceOf(address(this));
+        assertGt(shares, sharesAfterDeposit, "shares should have increased");
+
+        stew.updateUser(address(this));
+        uint256 sharesAfterUpdate = stew.balanceOf(address(this));
+        assertEq(shares, sharesAfterUpdate, "shares should be the same after update");
+    }
+
     function testRewardMath() public {
         uint256[] memory userGooIds = new uint256[](2);
         userGooIds[0] = gobblers.mintGobblerExposed(address(_users[0]), 3);

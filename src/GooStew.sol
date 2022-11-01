@@ -254,8 +254,7 @@ contract GooStew is ERC20, BoringBatchable, Constants {
             return _balanceOf[account];
         }
 
-        (bool requiresUpdate, , , uint224 newGobblerSharesPerMultipleIndex,,,,,) =
-            _calculateUpdate();
+        (bool requiresUpdate,,, uint224 newGobblerSharesPerMultipleIndex,,,,,) = _calculateUpdate();
 
         if (!requiresUpdate) {
             newGobblerSharesPerMultipleIndex = _gobblerSharesPerMultipleIndex;
