@@ -249,12 +249,19 @@ contract GooStew is ERC20, BoringBatchable, Constants {
     function balanceOf(address account) public view virtual override returns (uint256) {
         // gobbler depositors earn ibGoo on every update inflation, account for that
         uint256 userSumMultiples = gobblerDeposits[account].sumMultiples;
-        // short-circuit as most ibGoo holders didn't deposit a gobbler and are therefore not lazy-minted any additional shares
+        // short-circuit as most ibGoo holders didn't deposit a gobbler and are therefore not delay-minted any additional shares
         if (userSumMultiples == 0) {
             return _balanceOf[account];
         }
+
+        (bool requiresUpdate,,, uint224 newGobblerSharesPerMultipleIndex,,,,,) = _calculateUpdate();
+
+        if (!requiresUpdate) {
+            newGobblerSharesPerMultipleIndex = _gobblerSharesPerMultipleIndex;
+        }
+
         return _balanceOf[account]
-            + _computeUnmintedShares(_gobblerSharesPerMultipleIndex, gobblerDeposits[account].lastIndex, userSumMultiples);
+            + _computeUnmintedShares(newGobblerSharesPerMultipleIndex, gobblerDeposits[account].lastIndex, userSumMultiples);
     }
 
     function _beforeTokenTransfer(address from, address, /* to */ uint256 /* amount */ ) internal virtual override {
