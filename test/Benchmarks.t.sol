@@ -37,7 +37,7 @@ contract BenchmarksTest is ArtGobblersTest, ERC1155TokenReceiver {
         gobblers.setApprovalForAll(address(stew), true);
 
         _mintGoo(initializer, 1e12);
-        stew.depositGoo(1e12);
+        stew.deposit(1e12, address(this));
 
         uint256[] memory gobblerIds = new uint256[](1);
         gobblerIds[0] = gobblers.mintGobblerExposed(initializer, 6);
@@ -53,7 +53,7 @@ contract BenchmarksTest is ArtGobblersTest, ERC1155TokenReceiver {
 
     function testDepositGooInitial() public {
         // 0 balance before
-        stew.depositGoo(10e18);
+        stew.deposit(10e18, address(this));
     }
 
     function testDepositGobblerInitial() public {
@@ -92,7 +92,7 @@ contract BenchmarksTest2 is ArtGobblersTest, ERC1155TokenReceiver {
             gobblerIds[i] = gobblers.mintGobblerExposed(address(this), uint32(6 + (i % 3)));
         }
         stew.depositGobblers(gobblerIds);
-        stew.depositGoo(10e18);
+        stew.deposit(10e18, address(this));
 
         // set contract into normal state: LAZY_MINT_ADDRESS balance, _gobblerSharesPerMultipleIndex, _sumMultiples not zero
         skip(1 days);
@@ -126,7 +126,7 @@ contract BenchmarksTest2 is ArtGobblersTest, ERC1155TokenReceiver {
     }
 
     function testRedeemGooShares() public {
-        stew.redeemGooShares(type(uint256).max);
+        stew.redeem(type(uint256).max, address(this), address(this));
     }
 
     function testRedeemGobbler() public {

@@ -8,13 +8,14 @@ import {toDaysWadUnsafe} from "solmate/utils/SignedWadMath.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import {IGobblers} from "./IGobblers.sol";
+import {IERC4626} from "./IERC4626.sol";
 import {Constants} from "./Constants.sol";
 import {BoringBatchable} from "./BoringBatchable.sol";
 import {LibGOO} from "./LibGOO.sol";
 import {LibPackedArray} from "./LibPackedArray.sol";
 import {ERC20} from "./ERC20.sol";
 
-contract GooStew is ERC20, BoringBatchable, Constants {
+contract GooStew is IERC4626, ERC20, BoringBatchable, Constants {
     using LibString for uint256;
     using LibPackedArray for uint256[];
     using FixedPointMathLib for uint256;
@@ -154,8 +155,7 @@ contract GooStew is ERC20, BoringBatchable, Constants {
                 // we can assume that totalSupply > 0, i.e., fees turned on only after there's a goo deposit. saves 1 sload
                 unchecked {
                     // unchecked: rewardsGobblers is derived from gooBalance() which is capped by maxGooAmount. mintShares is therefore also capped.
-                    uint256 mintShares =
-                        (rewardsGobblers * 1e18) / _sharesPrice({totalShares: newTotalShares, totalGoo: newTotalGoo});
+                    uint256 mintShares = _convertToShares(rewardsGobblers, newTotalGoo, newTotalShares);
                     newTotalGoo += rewardsGobblers;
                     // mintShares is rounded down, new shares price should never decrease because of a rounding error
                     // we're delay-allocating the new shares for _all_ users here without actually minting to an address
@@ -169,8 +169,7 @@ contract GooStew is ERC20, BoringBatchable, Constants {
                 unchecked {
                     // unchecked: rewardsFee is derived from gooBalance() which is capped by maxGooAmount. shares is therefore also capped.
                     // we can assume that totalSupply > 0, i.e., fees turned on only after there's a goo deposit. saves 1 sload
-                    sharesAllocatedToFeeReceiver =
-                        (rewardsFee * 1e18) / _sharesPrice({totalShares: newTotalShares, totalGoo: newTotalGoo});
+                    sharesAllocatedToFeeReceiver = _previewDeposit(rewardsFee, newTotalGoo, newTotalShares);
                     newTotalGoo += rewardsFee;
                     newTotalShares += sharesAllocatedToFeeReceiver;
                 }
@@ -275,7 +274,223 @@ contract GooStew is ERC20, BoringBatchable, Constants {
     }
 
     /*//////////////////////////////////////////////////////////////
-                        DEPOSITS & REDEEMS
+                        GOO DEPOSITS & REDEEMS
+                        ERC4626 FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
+    function asset() external view override returns (address assetTokenAddress) {
+        return assetTokenAddress = address(_goo);
+    }
+
+    function totalAssets() external view override returns (uint256 totalManagedAssets) {
+        totalManagedAssets = _totalGoo;
+    }
+
+    function deposit(uint256 assets, address receiver) external virtual override returns (uint256 shares) {
+        _updateInflation();
+        _updateUser(receiver);
+
+        // Check for rounding error since we round down in previewDeposit.
+        shares = _previewDeposit(assets, _totalGoo, _totalSupply);
+        if (_totalSupply == 0) {
+            // we send some tokens to the burn address to ensure gooSharePrice is never decreasing (as it can't be reset by redeeming all shares)
+            _mint(BURN_ADDRESS, MIN_GOO_SHARES_INITIAL_MINT);
+            // shares already decreased by MIN_GOO_SHARES_INITIAL_MINT in preview
+        }
+
+        // _pullGoo also adds the amount to ArtGobblers to earn goo inflation
+        _pullGoo(assets);
+        _totalGoo += assets;
+
+        _mint(receiver, shares);
+
+        emit Deposit(msg.sender, receiver, assets, shares);
+    }
+
+    function mint(uint256 shares, address receiver) external virtual override returns (uint256 assets) {
+        _updateInflation();
+        _updateUser(receiver);
+
+        assets = _previewMint(shares, _totalGoo, _totalSupply); // No need to check for rounding error, previewMint rounds up.
+        if (_totalSupply == 0) {
+            // we send some tokens to the burn address to ensure gooSharePrice is never decreasing (as it can't be reset by redeeming all shares)
+            _mint(BURN_ADDRESS, MIN_GOO_SHARES_INITIAL_MINT);
+            // assets already increased by MIN_GOO_SHARES_INITIAL_MINT in preview, s.t. we indeed mint `shares` shares
+        }
+
+        // _pullGoo also adds the amount to ArtGobblers to earn goo inflation
+        _pullGoo(assets);
+        _totalGoo += assets;
+
+        _mint(receiver, shares);
+
+        emit Deposit(msg.sender, receiver, assets, shares);
+    }
+
+    function withdraw(uint256 assets, address receiver, address owner)
+        external
+        virtual
+        override
+        returns (uint256 shares)
+    {
+        _updateInflation();
+        _updateUser(owner); // owner's balance will be changed, so update them
+
+        shares = _previewWithdraw(assets, _totalGoo, _totalSupply); // No need to check for rounding error, previewWithdraw rounds up.
+
+        if (msg.sender != owner) {
+            uint256 allowed = allowance[owner][msg.sender]; // Saves gas for limited approvals.
+
+            if (allowed != type(uint256).max) allowance[owner][msg.sender] = allowed - shares;
+        }
+
+        _burn(owner, shares);
+
+        _pushGoo(receiver, assets);
+        _totalGoo -= assets;
+
+        emit Withdraw(msg.sender, receiver, owner, assets, shares);
+    }
+
+    function redeem(uint256 shares, address receiver, address owner)
+        external
+        virtual
+        override
+        returns (uint256 assets)
+    {
+        _updateInflation();
+        _updateUser(owner); // owner's balance will be changed, so update them
+
+        // shares = type(uint256).max is a special value that means withdraw all
+        // can directly read from _balanceOf instead of balanceOf() as it has been accrued in `_updateUser`
+        if (shares == type(uint256).max) shares = _balanceOf[owner];
+        if (msg.sender != owner) {
+            uint256 allowed = allowance[owner][msg.sender]; // Saves gas for limited approvals.
+
+            if (allowed != type(uint256).max) allowance[owner][msg.sender] = allowed - shares;
+        }
+
+        assets = _previewRedeem(shares, _totalGoo, _totalSupply);
+
+        _burn(owner, shares);
+
+        _pushGoo(receiver, assets);
+        _totalGoo -= assets;
+
+        emit Withdraw(msg.sender, receiver, owner, assets, shares);
+    }
+
+    function convertToShares(uint256 assets) external view virtual override returns (uint256) {
+        (bool requiresUpdate, uint256 newTotalGoo, uint256 newTotalShares,,,,,,) = _calculateUpdate();
+        if (!requiresUpdate) {
+            newTotalGoo = _totalGoo;
+            newTotalShares = _totalSupply;
+        }
+
+        return _convertToShares(assets, newTotalGoo, newTotalShares);
+    }
+
+    function _convertToShares(uint256 assets, uint256 totalGoo, uint256 totalShares) internal pure returns (uint256) {
+        // totalShares > 0 => totalGoo > 0. as initially they are 1-to-1, and then totalGoo only ever increases by more than totalSupply
+        // initial mint receives MIN_GOO_SHARES_INITIAL_MINT shares less
+        return totalShares == 0 ? assets - MIN_GOO_SHARES_INITIAL_MINT : assets.mulDivDown(totalShares, totalGoo);
+    }
+
+    function convertToAssets(uint256 shares) external view virtual override returns (uint256) {
+        (bool requiresUpdate, uint256 newTotalGoo, uint256 newTotalShares,,,,,,) = _calculateUpdate();
+        if (!requiresUpdate) {
+            newTotalGoo = _totalGoo;
+            newTotalShares = _totalSupply;
+        }
+
+        return _convertToAssets(shares, newTotalGoo, newTotalShares);
+    }
+
+    function _convertToAssets(uint256 shares, uint256 totalGoo, uint256 totalShares) internal pure returns (uint256) {
+        return totalShares == 0 ? shares : shares.mulDivDown(totalGoo, totalShares);
+    }
+
+    function previewDeposit(uint256 assets) external view virtual override returns (uint256) {
+        (bool requiresUpdate, uint256 newTotalGoo, uint256 newTotalShares,,,,,,) = _calculateUpdate();
+        if (!requiresUpdate) {
+            newTotalGoo = _totalGoo;
+            newTotalShares = _totalSupply;
+        }
+
+        return _previewDeposit(assets, newTotalGoo, newTotalShares);
+    }
+
+    function _previewDeposit(uint256 assets, uint256 totalGoo, uint256 totalShares) internal pure returns (uint256) {
+        return _convertToShares(assets, totalGoo, totalShares);
+    }
+
+    function previewMint(uint256 shares) external view virtual override returns (uint256) {
+        (bool requiresUpdate, uint256 newTotalGoo, uint256 newTotalShares,,,,,,) = _calculateUpdate();
+        if (!requiresUpdate) {
+            newTotalGoo = _totalGoo;
+            newTotalShares = _totalSupply;
+        }
+
+        return _previewMint(shares, newTotalGoo, newTotalShares);
+    }
+
+    function _previewMint(uint256 shares, uint256 totalGoo, uint256 totalShares) internal pure returns (uint256) {
+        // initial mint must mint MIN_GOO_SHARES_INITIAL_MINT more, because they receive shares minus MIN_GOO_SHARES_INITIAL_MINT
+        return totalShares == 0 ? shares + MIN_GOO_SHARES_INITIAL_MINT : shares.mulDivUp(totalGoo, totalShares);
+    }
+
+    function previewWithdraw(uint256 assets) external view virtual override returns (uint256) {
+        (bool requiresUpdate, uint256 newTotalGoo, uint256 newTotalShares,,,,,,) = _calculateUpdate();
+        if (!requiresUpdate) {
+            newTotalGoo = _totalGoo;
+            newTotalShares = _totalSupply;
+        }
+
+        return _previewWithdraw(assets, newTotalGoo, newTotalShares);
+    }
+
+    function _previewWithdraw(uint256 assets, uint256 totalGoo, uint256 totalShares) internal pure returns (uint256) {
+        return totalShares == 0 ? assets : assets.mulDivUp(totalShares, totalGoo);
+    }
+
+    function previewRedeem(uint256 shares) external view virtual override returns (uint256) {
+        (bool requiresUpdate, uint256 newTotalGoo, uint256 newTotalShares,,,,,,) = _calculateUpdate();
+        if (!requiresUpdate) {
+            newTotalGoo = _totalGoo;
+            newTotalShares = _totalSupply;
+        }
+
+        return _previewRedeem(shares, newTotalGoo, newTotalShares);
+    }
+
+    function _previewRedeem(uint256 shares, uint256 totalGoo, uint256 totalShares) internal pure returns (uint256) {
+        return _convertToAssets(shares, totalGoo, totalShares);
+    }
+
+    function maxDeposit(address) external view virtual override returns (uint256) {
+        return type(uint256).max;
+    }
+
+    function maxMint(address) external view virtual override returns (uint256) {
+        return type(uint256).max;
+    }
+
+    function maxWithdraw(address owner) external view virtual override returns (uint256) {
+        (bool requiresUpdate, uint256 newTotalGoo, uint256 newTotalShares,,,,,,) = _calculateUpdate();
+        if (!requiresUpdate) {
+            newTotalGoo = _totalGoo;
+            newTotalShares = _totalSupply;
+        }
+        // use balanceOf function for optimistic update
+        return _convertToAssets(balanceOf(owner), newTotalGoo, newTotalShares);
+    }
+
+    function maxRedeem(address owner) external view virtual override returns (uint256) {
+        // use balanceOf function for optimistic update
+        return balanceOf(owner);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                    GOBBLER DEPOSITS & REDEEMS
     //////////////////////////////////////////////////////////////*/
     function depositGobblers(uint256[] calldata gobblerIds)
         external

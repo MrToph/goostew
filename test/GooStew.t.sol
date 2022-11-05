@@ -55,7 +55,7 @@ contract GooStewManualTest is BasicTest, Constants {
         vm.warp(0);
 
         // deposit initial goo
-        stew.depositGoo(MIN_GOO_SHARES_INITIAL_MINT);
+        stew.deposit(MIN_GOO_SHARES_INITIAL_MINT, address(this));
     }
 
     function testFees() public {
@@ -88,7 +88,7 @@ contract GooStewManualTest is BasicTest, Constants {
         (,,, uint256 rewardsFee) = abi.decode(log.data, (uint40, uint256, uint256, uint256));
 
         vm.prank(feeRecipient);
-        uint256 gooFees = stew.redeemGooShares(type(uint256).max);
+        uint256 gooFees = stew.redeem(type(uint256).max, feeRecipient, feeRecipient);
         assertApproxEqRel(gooFees, rewardsFee, 1e6 /* 1e-12 max error */ );
     }
 
@@ -138,7 +138,7 @@ contract GooStewManualTest is BasicTest, Constants {
         uint256[] memory gobblerIds = new uint256[](1);
         gobblerIds[0] = gobblers.mintGobblerExposed(address(this), 7);
         stew.depositGobblers(gobblerIds);
-        stew.depositGoo(1e18);
+        stew.deposit(1e18, address(this));
         uint256 sharesAfterDeposit = stew.balanceOf(address(this));
 
         // skip time, no update call but balanceOf should still reflect the rewards accrued to gobbler depositors
@@ -166,21 +166,21 @@ contract GooStewManualTest is BasicTest, Constants {
         gobblerIds[0] = userGooIds[0];
         vm.startPrank(_users[0]);
         stew.depositGobblers(gobblerIds);
-        stew.depositGoo(userGooDeposits[0]);
+        stew.deposit(userGooDeposits[0], address(_users[0]));
         skip(1 days);
         // they should have received the same amount of goo that they would have received on their own
-        uint256 gooEarned = stew.redeemGooShares(type(uint256).max);
+        uint256 gooEarned = stew.redeem(type(uint256).max, _users[0], _users[0]);
         assertGe( // in practice, it's slightly more because of the initial MIN_GOO_SHARES_INITIAL_MINT
         gooEarned, LibGOO.computeGOOBalance(3, userGooDeposits[0], uint256(toDaysWadUnsafe(86400))));
         // user 0 reinvests his initial
-        stew.depositGoo(userGooDeposits[0]);
+        stew.deposit(userGooDeposits[0], address(_users[0]));
         vm.stopPrank();
 
         // user 1 deposits and 1 day passes
         gobblerIds[0] = userGooIds[1];
         vm.startPrank(_users[1]);
         stew.depositGobblers(gobblerIds);
-        stew.depositGoo(userGooDeposits[1]);
+        stew.deposit(userGooDeposits[1], address(_users[1]));
         skip(1 days);
         vm.stopPrank();
 
@@ -198,11 +198,11 @@ contract GooStewManualTest is BasicTest, Constants {
          */
         // user 0 withdraws
         vm.prank(_users[0]);
-        gooEarned = stew.redeemGooShares(type(uint256).max);
+        gooEarned = stew.redeem(type(uint256).max, _users[0], _users[0]);
         assertGt(gooEarned, 7e18 * (1e6 - 1) / 1e6);
         // user 1 withdraws
         vm.prank(_users[1]);
-        gooEarned = stew.redeemGooShares(type(uint256).max);
+        gooEarned = stew.redeem(type(uint256).max, _users[1], _users[1]);
         assertGt(gooEarned, 9e18 * (1e6 - 1) / 1e6);
     }
 
@@ -215,12 +215,12 @@ contract GooStewManualTest is BasicTest, Constants {
         stew.depositGobblers(gobblerIds);
         skip(20 * 365 days);
 
-        uint256 gooAmount = stew.redeemGooShares(type(uint256).max);
+        uint256 gooAmount = stew.redeem(type(uint256).max, address(this), address(this));
         assertEq(gooAmount, 2.13160000146e30);
         (,,, uint256 lastIndex, uint256 sharesPrice) = stew.getGlobalInfo();
         assertEq(sharesPrice, 1.460000001e27);
         assertEq(lastIndex, 9.125e33);
-        uint256 shares = stew.depositGoo(gooAmount);
+        uint256 shares = stew.deposit(gooAmount, address(this));
         assertEq(shares, 1.46e21);
     }
 }
@@ -264,7 +264,7 @@ contract GooStewFuzzTest is BasicTest, Constants {
 
         // deposit initial mint that is sent to burn address because first deposit can actually lead to a loss
         // in practice we will bootstrap the contract with this tiny amount of goo
-        stew.depositGoo(MIN_GOO_SHARES_INITIAL_MINT);
+        stew.deposit(MIN_GOO_SHARES_INITIAL_MINT, address(this));
 
         // someone deposits some multiple and goo
         console2.log("===== User 0 =====");
@@ -274,7 +274,7 @@ contract GooStewFuzzTest is BasicTest, Constants {
             if (gobblerIds[0] > 0) {
                 stew.depositGobblers(gobblerIds);
             }
-            stew.depositGoo(gooDeposits[0]);
+            stew.deposit(gooDeposits[0], _users[0]);
         }
         vm.stopPrank();
 
@@ -286,7 +286,7 @@ contract GooStewFuzzTest is BasicTest, Constants {
             if (gobblerIds[0] > 0) {
                 stew.depositGobblers(gobblerIds);
             }
-            stew.depositGoo(gooDeposits[1]);
+            stew.deposit(gooDeposits[1], _users[1]);
         }
         vm.stopPrank();
         skip(delays[0]);
@@ -299,7 +299,7 @@ contract GooStewFuzzTest is BasicTest, Constants {
             if (gobblerIds[0] > 0) {
                 stew.depositGobblers(gobblerIds);
             }
-            stew.depositGoo(gooDeposits[2]);
+            stew.deposit(gooDeposits[2], _users[2]);
         }
         vm.stopPrank();
         skip(delays[1]);
@@ -329,7 +329,7 @@ contract GooStewFuzzTest is BasicTest, Constants {
             stew.redeemGobblers(removalIndexes, gobblerIds);
         }
         console2.log("redeeming goo ...");
-        uint256 gooAmount = stew.redeemGooShares(type(uint256).max);
+        uint256 gooAmount = stew.redeem(type(uint256).max, _users[userId], _users[userId]);
         vm.stopPrank();
 
         uint256 totalGooNoStake = LibGOO.computeGOOBalance(
