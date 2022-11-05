@@ -42,7 +42,7 @@ The full implementation is available as [GooStew.sol](./src/GooStew.sol).
 
 ## Further research
 
-1. To incentivize developers building this and other projects in the ArtGobblers ecosystem, the protocol could take a performance fee on the additional goo production. Using [philogy's math](https://github.com/Philogy/efficient-total-virtual-goo-tracking/blob/aced789852c12f6c7f3e8c1afe5385a7f96b787a/TECHNICAL.md), we can compute the _sum_ of individual goo balances and therefore the **additional** goo production in the smart contract: $g(t, M, \textrm{GOO}) - \sum_i g(t, m_i, \textrm{goo}_i)$.
+1. To incentivize developers building this and other projects in the ArtGobblers ecosystem, the protocol could take a performance fee on the additional goo production. Using [philogy's math](https://github.com/Philogy/efficient-total-virtual-goo-tracking/blob/main/TECHNICAL.md), we can compute the _sum_ of individual goo balances and therefore the **additional** goo production in the smart contract: $g(t, M, \textrm{GOO}) - \sum_i g(t, m_i, \textrm{goo}_i)$.
 
 
 # Appendix
