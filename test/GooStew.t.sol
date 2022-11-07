@@ -336,6 +336,7 @@ contract GooStewFuzzTest is BasicTest, Constants {
             gooDepositAmount, // initial deposit
             uint256(toDaysWadUnsafe(delay))
         );
+
         // 1 bips (0.01%) rounding error allowed. happens with tiny goo deposits
         assertGe(gooAmount, (totalGooNoStake * (1e4 - 1)) / 1e4);
     }

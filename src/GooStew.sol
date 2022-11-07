@@ -30,16 +30,17 @@ contract GooStew is IERC4626, ERC20, BoringBatchable, Constants {
     uint32 public feeRate; // fee on the goo rewards, type(uint32).max = 100%
 
     // Goo related
+    // totalShares <= totalGoo & totalGoo is expected to be <= maxGooAmount ~ g(20 years, 2*10_000*9, 0) = 2.39805e30 < 2**101. ArtGobblers caps .lastBalance at uint128 and will overflow.
     // @note we use ERC20._totalSupply as _totalShares
     uint256 internal _totalGoo; // includes deposited + earned inflation (for both gobblers and goo stakers)
 
     // Gobbler related
     struct GobblerDepositInfo {
+        // index <= maxGooAmount * 1e18 = 2e48 fits easily in 224 bits
         uint224 lastIndex;
         uint32 sumMultiples;
         uint256[] packedIds;
     }
-    // shares * 1e18 / sumMultiples. shares is expected to be <= maxGooAmount ~ 2e30 => index <= 2e48 fits in 224 bits
 
     uint224 internal _gobblerSharesPerMultipleIndex;
     uint32 internal _sumMultiples; // sum of emissionMultiples of all deposited gobblers
@@ -133,14 +134,12 @@ contract GooStew is IERC4626, ERC20, BoringBatchable, Constants {
             // load from same storage slot
             newGobblerSharesPerMultipleIndex = _gobblerSharesPerMultipleIndex;
             uint32 sumMultiples = _sumMultiples;
-
             (rewardsGoo, rewardsGobblers, rewardsFee) = _calculateRewards({
                 lastTotalGoo: newTotalGoo,
                 lastUpdate: lastUpdate,
                 sumMultiples: sumMultiples,
                 feePercentage: feePercentage
             });
-
             // 1. update goo rewards: this updates an imagined sharesPrice
             unchecked {
                 // unchecked: rewardsGoo is derived from gooBalance() which is capped by maxGooAmount
@@ -155,7 +154,12 @@ contract GooStew is IERC4626, ERC20, BoringBatchable, Constants {
                 // we can assume that totalSupply > 0, i.e., fees turned on only after there's a goo deposit. saves 1 sload
                 unchecked {
                     // unchecked: rewardsGobblers is derived from gooBalance() which is capped by maxGooAmount. mintShares is therefore also capped.
-                    uint256 mintShares = _convertToShares(rewardsGobblers, newTotalGoo, newTotalShares);
+                    uint256 mintShares = _convertToShares({
+                        assets: rewardsGobblers,
+                        totalGoo: newTotalGoo,
+                        totalShares: newTotalShares,
+                        checked: false
+                    });
                     newTotalGoo += rewardsGobblers;
                     // mintShares is rounded down, new shares price should never decrease because of a rounding error
                     // we're delay-allocating the new shares for _all_ users here without actually minting to an address
@@ -169,7 +173,12 @@ contract GooStew is IERC4626, ERC20, BoringBatchable, Constants {
                 unchecked {
                     // unchecked: rewardsFee is derived from gooBalance() which is capped by maxGooAmount. shares is therefore also capped.
                     // we can assume that totalSupply > 0, i.e., fees turned on only after there's a goo deposit. saves 1 sload
-                    sharesAllocatedToFeeReceiver = _previewDeposit(rewardsFee, newTotalGoo, newTotalShares);
+                    sharesAllocatedToFeeReceiver = _convertToShares({
+                        assets: rewardsFee,
+                        totalGoo: newTotalGoo,
+                        totalShares: newTotalShares,
+                        checked: false
+                    });
                     newTotalGoo += rewardsFee;
                     newTotalShares += sharesAllocatedToFeeReceiver;
                 }
@@ -290,7 +299,7 @@ contract GooStew is IERC4626, ERC20, BoringBatchable, Constants {
         _updateUser(receiver); // receiver's balance will be changed, so update them
 
         // Check for rounding error since we round down in previewDeposit.
-        shares = _previewDeposit(assets, _totalGoo, _totalSupply);
+        shares = _previewDeposit({assets: assets, totalGoo: _totalGoo, totalShares: _totalSupply});
         if (_totalSupply == 0) {
             // we send some tokens to the burn address to ensure gooSharePrice is never decreasing (as it can't be reset by redeeming all shares)
             _mint(BURN_ADDRESS, MIN_GOO_SHARES_INITIAL_MINT);
@@ -310,7 +319,7 @@ contract GooStew is IERC4626, ERC20, BoringBatchable, Constants {
         _updateInflation();
         _updateUser(receiver); // receiver's balance will be changed, so update them
 
-        assets = _previewMint(shares, _totalGoo, _totalSupply); // No need to check for rounding error, previewMint rounds up.
+        assets = _previewMint({shares: shares, totalGoo: _totalGoo, totalShares: _totalSupply}); // No need to check for rounding error, previewMint rounds up.
         if (_totalSupply == 0) {
             // we send some tokens to the burn address to ensure gooSharePrice is never decreasing (as it can't be reset by redeeming all shares)
             _mint(BURN_ADDRESS, MIN_GOO_SHARES_INITIAL_MINT);
@@ -335,7 +344,7 @@ contract GooStew is IERC4626, ERC20, BoringBatchable, Constants {
         _updateInflation();
         _updateUser(owner); // owner's balance will be changed, so update them
 
-        shares = _previewWithdraw(assets, _totalGoo, _totalSupply); // No need to check for rounding error, previewWithdraw rounds up.
+        shares = _previewWithdraw({assets: assets, totalGoo: _totalGoo, totalShares: _totalSupply}); // No need to check for rounding error, previewWithdraw rounds up.
 
         if (msg.sender != owner) {
             uint256 allowed = allowance[owner][msg.sender]; // Saves gas for limited approvals.
@@ -369,7 +378,7 @@ contract GooStew is IERC4626, ERC20, BoringBatchable, Constants {
             if (allowed != type(uint256).max) allowance[owner][msg.sender] = allowed - shares;
         }
 
-        assets = _previewRedeem(shares, _totalGoo, _totalSupply);
+        assets = _previewRedeem({shares: shares, totalGoo: _totalGoo, totalShares: _totalSupply});
 
         _burn(owner, shares);
 
@@ -386,13 +395,23 @@ contract GooStew is IERC4626, ERC20, BoringBatchable, Constants {
             newTotalShares = _totalSupply;
         }
 
-        return _convertToShares(assets, newTotalGoo, newTotalShares);
+        return _convertToShares({assets: assets, totalGoo: newTotalGoo, totalShares: newTotalShares, checked: true});
     }
 
-    function _convertToShares(uint256 assets, uint256 totalGoo, uint256 totalShares) internal pure returns (uint256) {
+    function _convertToShares(uint256 assets, uint256 totalGoo, uint256 totalShares, bool checked)
+        internal
+        pure
+        returns (uint256)
+    {
         // totalShares > 0 => totalGoo > 0. as initially they are 1-to-1, and then totalGoo only ever increases by more than totalSupply
         // initial mint receives MIN_GOO_SHARES_INITIAL_MINT shares less
-        return totalShares == 0 ? assets - MIN_GOO_SHARES_INITIAL_MINT : assets.mulDivDown(totalShares, totalGoo);
+        if (checked) {
+            return totalShares == 0 ? assets - MIN_GOO_SHARES_INITIAL_MINT : assets.mulDivDown(totalShares, totalGoo);
+        } else {
+            unchecked {
+                return totalShares == 0 ? assets - MIN_GOO_SHARES_INITIAL_MINT : (assets * totalShares) / totalGoo;
+            }
+        }
     }
 
     function convertToAssets(uint256 shares) external view virtual override returns (uint256) {
@@ -402,7 +421,7 @@ contract GooStew is IERC4626, ERC20, BoringBatchable, Constants {
             newTotalShares = _totalSupply;
         }
 
-        return _convertToAssets(shares, newTotalGoo, newTotalShares);
+        return _convertToAssets({shares: shares, totalGoo: newTotalGoo, totalShares: newTotalShares});
     }
 
     function _convertToAssets(uint256 shares, uint256 totalGoo, uint256 totalShares) internal pure returns (uint256) {
@@ -416,11 +435,11 @@ contract GooStew is IERC4626, ERC20, BoringBatchable, Constants {
             newTotalShares = _totalSupply;
         }
 
-        return _previewDeposit(assets, newTotalGoo, newTotalShares);
+        return _previewDeposit({assets: assets, totalGoo: newTotalGoo, totalShares: newTotalShares});
     }
 
     function _previewDeposit(uint256 assets, uint256 totalGoo, uint256 totalShares) internal pure returns (uint256) {
-        return _convertToShares(assets, totalGoo, totalShares);
+        return _convertToShares({assets: assets, totalGoo: totalGoo, totalShares: totalShares, checked: true});
     }
 
     function previewMint(uint256 shares) external view virtual override returns (uint256) {
@@ -430,7 +449,7 @@ contract GooStew is IERC4626, ERC20, BoringBatchable, Constants {
             newTotalShares = _totalSupply;
         }
 
-        return _previewMint(shares, newTotalGoo, newTotalShares);
+        return _previewMint({shares: shares, totalGoo: newTotalGoo, totalShares: newTotalShares});
     }
 
     function _previewMint(uint256 shares, uint256 totalGoo, uint256 totalShares) internal pure returns (uint256) {
@@ -445,7 +464,7 @@ contract GooStew is IERC4626, ERC20, BoringBatchable, Constants {
             newTotalShares = _totalSupply;
         }
 
-        return _previewWithdraw(assets, newTotalGoo, newTotalShares);
+        return _previewWithdraw({assets: assets, totalGoo: newTotalGoo, totalShares: newTotalShares});
     }
 
     function _previewWithdraw(uint256 assets, uint256 totalGoo, uint256 totalShares) internal pure returns (uint256) {
@@ -458,12 +477,11 @@ contract GooStew is IERC4626, ERC20, BoringBatchable, Constants {
             newTotalGoo = _totalGoo;
             newTotalShares = _totalSupply;
         }
-
-        return _previewRedeem(shares, newTotalGoo, newTotalShares);
+        return _previewRedeem({shares: shares, totalGoo: newTotalGoo, totalShares: newTotalShares});
     }
 
     function _previewRedeem(uint256 shares, uint256 totalGoo, uint256 totalShares) internal pure returns (uint256) {
-        return _convertToAssets(shares, totalGoo, totalShares);
+        return _convertToAssets({shares: shares, totalGoo: totalGoo, totalShares: totalShares});
     }
 
     function maxDeposit(address) external view virtual override returns (uint256) {
@@ -481,7 +499,7 @@ contract GooStew is IERC4626, ERC20, BoringBatchable, Constants {
             newTotalShares = _totalSupply;
         }
         // use balanceOf function for optimistic update
-        return _convertToAssets(balanceOf(owner), newTotalGoo, newTotalShares);
+        return _convertToAssets({shares: balanceOf(owner), totalGoo: newTotalGoo, totalShares: newTotalShares});
     }
 
     function maxRedeem(address owner) external view virtual override returns (uint256) {
@@ -527,10 +545,11 @@ contract GooStew is IERC4626, ERC20, BoringBatchable, Constants {
     }
 
     /// withdraws all gobblers of the caller
-    function withdrawGobblers(address receiver, uint256[] calldata removalIndexesDescending, uint256[] calldata expectedGobblerIds)
-        external
-        updateInflation
-    {
+    function withdrawGobblers(
+        address receiver,
+        uint256[] calldata removalIndexesDescending,
+        uint256[] calldata expectedGobblerIds
+    ) external updateInflation {
         _updateUser(msg.sender); // removing from msg.sender
 
         uint32 sumMultiples = 0;
@@ -624,7 +643,13 @@ contract GooStew is IERC4626, ERC20, BoringBatchable, Constants {
     function getGlobalInfo()
         external
         view
-        returns (uint256 totalGooAssets, uint256 totalSupplyShares, uint32 sumMultiples, uint64 lastUpdate, uint256 lastIndex)
+        returns (
+            uint256 totalGooAssets,
+            uint256 totalSupplyShares,
+            uint32 sumMultiples,
+            uint64 lastUpdate,
+            uint256 lastIndex
+        )
     {
         totalGooAssets = _totalGoo;
         totalSupplyShares = _totalSupply;
