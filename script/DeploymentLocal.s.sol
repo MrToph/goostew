@@ -82,8 +82,8 @@ contract Deployment is Script, Test, Utilities {
         // deposit gobblers and goo to stew
         gobblers.setApprovalForAll(address(stew), true);
         goo.approve(address(stew), 10e18);
-        stew.depositGoo(10e18);
-        stew.depositGobblers(ids);
+        stew.deposit(10e18, address(npc));
+        stew.depositGobblers(address(npc), ids);
 
         // send some gobblers and goo to the user
         _mintGobbler(user, 6);

@@ -41,7 +41,7 @@ contract BenchmarksTest is ArtGobblersTest, ERC1155TokenReceiver {
 
         uint256[] memory gobblerIds = new uint256[](1);
         gobblerIds[0] = gobblers.mintGobblerExposed(initializer, 6);
-        stew.depositGobblers(gobblerIds);
+        stew.depositGobblers(address(initializer), gobblerIds);
 
         skip(1 days); // call update once
 
@@ -60,7 +60,7 @@ contract BenchmarksTest is ArtGobblersTest, ERC1155TokenReceiver {
         // 0 deposited gobblers before
         uint256[] memory gobblerIds = new uint256[](1);
         gobblerIds[0] = 1;
-        stew.depositGobblers(gobblerIds);
+        stew.depositGobblers(address(this), gobblerIds);
     }
 
     function testDepositGobblersInitial() public {
@@ -69,7 +69,7 @@ contract BenchmarksTest is ArtGobblersTest, ERC1155TokenReceiver {
         for (uint256 i = 0; i < gobblerIds.length; ++i) {
             gobblerIds[i] = i + 1;
         }
-        stew.depositGobblers(gobblerIds);
+        stew.depositGobblers(address(this), gobblerIds);
     }
 }
 
@@ -91,7 +91,7 @@ contract BenchmarksTest2 is ArtGobblersTest, ERC1155TokenReceiver {
         for (uint256 i = 0; i < gobblerIds.length; ++i) {
             gobblerIds[i] = gobblers.mintGobblerExposed(address(this), uint32(6 + (i % 3)));
         }
-        stew.depositGobblers(gobblerIds);
+        stew.depositGobblers(address(this), gobblerIds);
         stew.deposit(10e18, address(this));
 
         // set contract into normal state: LAZY_MINT_ADDRESS balance, _gobblerSharesPerMultipleIndex, _sumMultiples not zero
@@ -107,10 +107,6 @@ contract BenchmarksTest2 is ArtGobblersTest, ERC1155TokenReceiver {
 
     function testGetGlobalInfo() public view {
         stew.getGlobalInfo();
-    }
-
-    function testSharesPrice() public view {
-        stew.sharesPrice();
     }
 
     function testBalanceOf() public view {
@@ -134,16 +130,16 @@ contract BenchmarksTest2 is ArtGobblersTest, ERC1155TokenReceiver {
         gobblerIds[0] = 1;
         uint256[] memory removalIndexes = new uint256[](1);
         removalIndexes[0] = 0;
-        stew.redeemGobblers(removalIndexes, gobblerIds);
+        stew.withdrawGobblers(address(this), removalIndexes, gobblerIds);
     }
 
-    function testRedeemGobblers() public {
+    function testWithdrawGobblers() public {
         uint256[] memory gobblerIds = new uint256[](10);
         uint256[] memory removalIndexes = new uint256[](gobblerIds.length);
         for (uint256 i = 0; i < gobblerIds.length; ++i) {
             removalIndexes[i] = (gobblerIds.length - 1) - i;
             gobblerIds[i] = removalIndexes[i] + 1; // ids are indexes shifted by 1
         }
-        stew.redeemGobblers(removalIndexes, gobblerIds);
+        stew.withdrawGobblers(address(this), removalIndexes, gobblerIds);
     }
 }
