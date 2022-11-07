@@ -21,7 +21,6 @@ contract GooStew is IERC4626, ERC20, BoringBatchable, Constants {
     using FixedPointMathLib for uint256;
 
     // accounting related
-    string internal constant BASE_URI = "https://nft.goostew.com/";
     IGobblers internal immutable _gobblers;
     IERC20 internal immutable _goo;
     // all 3 in a single slot
