@@ -10,7 +10,7 @@ abstract contract Constants {
     error InvalidArguments();
     error UnrevealedGobblerDeposit(uint256 gobblerId);
 
-    event DepositGobblers(address indexed owner, uint256[] gobblerIds, uint32 sumMultiples);
-    event DepositGoo(address indexed owner, uint256 amount, uint256 shares);
+    event DepositGobblers(address indexed sender, address indexed owner, uint256[] gobblerIds, uint32 sumMultiples);
+    event WithdrawGobblers(address indexed receiver, address indexed owner, uint256[] gobblerIds, uint32 sumMultiples);
     event InflationUpdate(uint40 timestamp, uint256 rewardsGoo, uint256 rewardsGobblers, uint256 rewardsFee);
 }
