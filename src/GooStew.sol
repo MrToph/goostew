@@ -10,12 +10,12 @@ import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import {IGobblers} from "./IGobblers.sol";
 import {IERC4626} from "./IERC4626.sol";
 import {Constants} from "./Constants.sol";
-import {BoringBatchable} from "./BoringBatchable.sol";
+import {Multicall} from "./Multicall.sol";
 import {LibGOO} from "./LibGOO.sol";
 import {LibPackedArray} from "./LibPackedArray.sol";
 import {ERC20} from "./ERC20.sol";
 
-contract GooStew is IERC4626, ERC20, BoringBatchable, Constants {
+contract GooStew is IERC4626, ERC20, Multicall, Constants {
     using LibString for uint256;
     using LibPackedArray for uint256[];
     using FixedPointMathLib for uint256;
@@ -29,9 +29,6 @@ contract GooStew is IERC4626, ERC20, BoringBatchable, Constants {
     uint32 public feeRate; // fee on the goo rewards, type(uint32).max = 100%
 
     // Goo related
-    // totalShares <= totalGoo & totalGoo is expected to be <= maxGooAmount ~ g(20 years, 2*10_000*9, 0) = 2.39805e30 < 2**101. ArtGobblers caps .lastBalance at uint128 and will overflow.
-    // @note we use ERC20._totalSupply as _totalShares
-    uint256 internal _totalGoo; // includes deposited + earned inflation (for both gobblers and goo stakers)
 
     // Gobbler related
     struct GobblerDepositInfo {
@@ -90,8 +87,8 @@ contract GooStew is IERC4626, ERC20, BoringBatchable, Constants {
         }
 
         // set new values
-        _totalGoo = newTotalGoo;
-        _totalSupply = newTotalShares;
+        _totalGoo = uint128(newTotalGoo); // unsafe typecast here to not revert in updateInflation
+        _totalSupply = uint128(newTotalShares);
         _gobblerSharesPerMultipleIndex = newGobblerSharesPerMultipleIndex;
 
         emit InflationUpdate({
@@ -127,6 +124,7 @@ contract GooStew is IERC4626, ERC20, BoringBatchable, Constants {
         if (lastUpdate != block.timestamp) {
             requiresUpdate = true;
 
+            // load from same storage slot
             newTotalGoo = _totalGoo;
             newTotalShares = _totalSupply;
 
@@ -307,7 +305,7 @@ contract GooStew is IERC4626, ERC20, BoringBatchable, Constants {
 
         // _pullGoo also adds the amount to ArtGobblers to earn goo inflation
         _pullGoo(assets);
-        _totalGoo += assets;
+        _totalGoo += _safeUint128(assets);
 
         _mint(receiver, shares);
 
@@ -327,7 +325,7 @@ contract GooStew is IERC4626, ERC20, BoringBatchable, Constants {
 
         // _pullGoo also adds the amount to ArtGobblers to earn goo inflation
         _pullGoo(assets);
-        _totalGoo += assets;
+        _totalGoo += _safeUint128(assets);
 
         _mint(receiver, shares);
 
@@ -354,7 +352,7 @@ contract GooStew is IERC4626, ERC20, BoringBatchable, Constants {
         _burn(owner, shares);
 
         _pushGoo(receiver, assets);
-        _totalGoo -= assets;
+        _totalGoo -= _safeUint128(assets);
 
         emit Withdraw(msg.sender, receiver, owner, assets, shares);
     }
@@ -382,7 +380,7 @@ contract GooStew is IERC4626, ERC20, BoringBatchable, Constants {
         _burn(owner, shares);
 
         _pushGoo(receiver, assets);
-        _totalGoo -= assets;
+        _totalGoo -= _safeUint128(assets);
 
         emit Withdraw(msg.sender, receiver, owner, assets, shares);
     }
@@ -550,14 +548,12 @@ contract GooStew is IERC4626, ERC20, BoringBatchable, Constants {
         uint256[] calldata expectedGobblerIds
     ) external updateInflation {
         _updateUser(msg.sender); // removing from msg.sender
+        if (receiver == address(this)) revert InvalidArguments(); // can't withdraw to this contract, sumMultiples would be wrong
 
-        uint32 sumMultiples = 0;
-        unchecked {
-            for (uint256 i = 0; i < expectedGobblerIds.length; ++i) {
-                // no overflow as uint32 is the same type ArtGobblers uses
-                sumMultiples += uint32(_gobblers.getGobblerEmissionMultiple(expectedGobblerIds[i]));
-            }
-        }
+        // optimistically transfer out gobblers, no reentrancy
+        uint32 sumMultiples = _gobblers.getUserData(address(this)).emissionMultiple;
+        _pushGobblers(receiver, expectedGobblerIds);
+        sumMultiples = sumMultiples - _gobblers.getUserData(address(this)).emissionMultiple;
 
         // expectedGobblerIds does not contain duplicates as `_pushGobblers` would fail. remove is safe
         // remove fails if an id is not in packedIds
@@ -565,7 +561,6 @@ contract GooStew is IERC4626, ERC20, BoringBatchable, Constants {
         gobblerDeposits[msg.sender].sumMultiples -= sumMultiples;
         _sumMultiples -= sumMultiples;
 
-        _pushGobblers(receiver, expectedGobblerIds);
         emit WithdrawGobblers(receiver, msg.sender, expectedGobblerIds, sumMultiples);
     }
 
@@ -599,7 +594,7 @@ contract GooStew is IERC4626, ERC20, BoringBatchable, Constants {
             for (uint256 i = 0; i < gobblerIds.length; ++i) {
                 // this also accrues inflation for us and
                 // "unstakes" them from ArtGobblers, we lose the emissionMultiples
-                // no `safeTransferFrom` because if you call this function we expect you can handle receiving the NFT (to == msg.sender)
+                // no `safeTransferFrom` because if you call this function we expect the specified `to` can handle receiving the NFT
                 _gobblers.transferFrom(address(this), to, gobblerIds[i]);
             }
         }
