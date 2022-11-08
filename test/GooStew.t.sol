@@ -209,18 +209,18 @@ contract GooStewManualTest is BasicTest, Constants {
     function testUpdateInflationNoOverflow() public {
         // test that update inflation does not overflow after 20 years with max gobbler deposits
         uint256[] memory gobblerIds = new uint256[](1);
-        uint32 maxEmissionMultiple = 10_000 * 8 * 2; // legendary gobbler minted with all gobblers using max emission multiple of 8
+        uint32 maxEmissionMultiple = 10_000 * 9 * 2; // legendary gobbler minted with all gobblers using max emission multiple of 9
         gobblerIds[0] = gobblers.mintGobblerExposed(address(this), maxEmissionMultiple);
 
         stew.depositGobblers(address(this), gobblerIds);
         skip(20 * 365 days);
 
         uint256 gooAmount = stew.redeem(type(uint256).max, address(this), address(this));
-        assertEq(gooAmount, 2.13160000146e30);
+        assertEq(gooAmount, 2.398050001548563850796990512247e30);
         (,,,, uint256 lastIndex) = stew.getGlobalInfo();
-        assertEq(lastIndex, 9.125e33);
+        assertEq(lastIndex, 8.603132504436328226527777777777777e33);
         uint256 shares = stew.deposit(gooAmount, address(this));
-        assertEq(shares, 1.46e21);
+        assertEq(shares, 1.548563850798539080773e21);
     }
 }
 

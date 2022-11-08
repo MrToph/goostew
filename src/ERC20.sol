@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity >=0.8.0;
 
+import "src/Constants.sol";
+
 /**
  * Base: https://github.com/transmissions11/solmate/blob/62e0943c013a66b2720255e2651450928f4eed7a/src/tokens/ERC20.sol
  * modified to:
@@ -39,8 +41,10 @@ abstract contract ERC20 {
     /*//////////////////////////////////////////////////////////////
                               ERC20 STORAGE
     //////////////////////////////////////////////////////////////*/
-
-    uint256 internal _totalSupply;
+    // totalShares <= totalGoo & totalGoo is expected to be <= maxGooAmount ~ g(20 years, 2*10_000*9, 0) = 2.39805e30 < 2**101. ArtGobblers caps .lastBalance at uint128 and will overflow.
+    // @note we use ERC20._totalSupply as _totalShares
+    uint128 internal _totalGoo; // includes deposited + earned inflation (for both gobblers and goo stakers)
+    uint128 internal _totalSupply;
 
     mapping(address => uint256) internal _balanceOf;
 
@@ -173,7 +177,7 @@ abstract contract ERC20 {
 
     function _mint(address to, uint256 amount) internal virtual {
         // _mint is only called from GooStew (not from this ERC20), so we don't need a hook, we manually ensure that everything is up-to-date
-        _totalSupply += amount;
+        _totalSupply += _safeUint128(amount);
 
         // Cannot overflow because the sum of all user
         // balances can't exceed the max uint256 value.
@@ -191,7 +195,7 @@ abstract contract ERC20 {
         // Cannot underflow because a user's balance
         // will never be larger than the total supply.
         unchecked {
-            _totalSupply -= amount;
+            _totalSupply -= _safeUint128(amount);
         }
 
         emit Transfer(from, address(0), amount);
@@ -238,4 +242,9 @@ abstract contract ERC20 {
      * To learn more about hooks, head to xref:ROOT:extending-contracts.adoc#using-hooks[Using Hooks].
      */
     function _beforeTokenTransfer(address from, address to, uint256 amount) internal virtual {}
+
+    function _safeUint128(uint256 amount) internal pure returns (uint128) {
+        if (amount > type(uint128).max) revert Constants.Overflow();
+        return uint128(amount);
+    }
 }

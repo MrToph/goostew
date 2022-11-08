@@ -125,7 +125,7 @@ contract BenchmarksTest2 is ArtGobblersTest, ERC1155TokenReceiver {
         stew.redeem(type(uint256).max, address(this), address(this));
     }
 
-    function testRedeemGobbler() public {
+    function testWithdrawGobbler() public {
         uint256[] memory gobblerIds = new uint256[](1);
         gobblerIds[0] = 1;
         uint256[] memory removalIndexes = new uint256[](1);

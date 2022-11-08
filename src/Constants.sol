@@ -9,6 +9,7 @@ abstract contract Constants {
     error Unauthorized();
     error InvalidArguments();
     error UnrevealedGobblerDeposit(uint256 gobblerId);
+    error Overflow();
 
     event DepositGobblers(address indexed sender, address indexed owner, uint256[] gobblerIds, uint32 sumMultiples);
     event WithdrawGobblers(address indexed receiver, address indexed owner, uint256[] gobblerIds, uint32 sumMultiples);
